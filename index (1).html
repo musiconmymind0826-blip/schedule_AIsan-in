@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0e27">
+<title>AIさんいんコンセルジュ スケジュールくん</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📅</text></svg>">
+<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22AI%E3%81%95%E3%82%93%E3%81%84%E3%82%93%E3%82%B3%E3%83%B3%E3%82%BB%E3%83%AB%E3%82%B8%E3%83%A5%20%E3%82%B9%E3%82%B1%E3%82%B8%E3%83%A5%E3%83%BC%E3%83%AB%E3%81%8F%E3%82%93%22%2C%22short_name%22%3A%22%E3%82%B9%E3%82%B1%E3%82%B8%E3%83%A5%E3%83%BC%E3%83%AB%E3%81%8F%E3%82%93%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230a0e27%22%2C%22theme_color%22%3A%22%230a0e27%22%2C%22orientation%22%3A%22any%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22data%3Aimage%2Fsvg%2Bxml%2C%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20100%20100'%3E%3Ctext%20y%3D'.9em'%20font-size%3D'90'%3E%F0%9F%93%85%3C%2Ftext%3E%3C%2Fsvg%3E%22%2C%22sizes%22%3A%22any%22%2C%22type%22%3A%22image%2Fsvg%2Bxml%22%7D%5D%7D">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230a0e27'/><text x='50' y='68' font-size='60' text-anchor='middle'>📅</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body,#root{height:100%;width:100%}
+body{font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif;background:#f0f2f5;color:#1a1a2e;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-thumb{background:#c1c8d4;border-radius:4px}
+::-webkit-scrollbar-track{background:transparent}
+@keyframes pulseRing{0%,100%{box-shadow:0 0 0 12px rgba(225,29,72,.15),0 6px 24px rgba(225,29,72,.3)}50%{box-shadow:0 0 0 20px rgba(225,29,72,.05),0 6px 24px rgba(225,29,72,.2)}}
+@keyframes toastSlide{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+@keyframes bounceY{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+@keyframes fadeIn{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
+@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+input,select,textarea,button{font-family:inherit}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+/* ════════════════════════════════════════════════════════════════
+   AIさんいんコンセルジュ スケジュールくん
+   Salesforce-grade Staff Schedule Management App
+   ════════════════════════════════════════════════════════════════ */
+
+// ── Data ──────────────────────────────────────────────────────
+const STAFF = [
+  { id:"s1", name:"岩成 太郎",  role:"営業部長",       color:"#0066ff", avatar:"岩" },
+  { id:"s2", name:"佐藤 花子",  role:"企画担当",       color:"#8b5cf6", avatar:"佐" },
+  { id:"s3", name:"田中 一郎",  role:"開発リーダー",    color:"#059669", avatar:"田" },
+  { id:"s4", name:"山田 美咲",  role:"カスタマーサポート", color:"#e11d48", avatar:"山" },
+  { id:"s5", name:"鈴木 健太",  role:"マーケティング",  color:"#d97706", avatar:"鈴" },
+];
+
+const CATS = {
+  meeting: { label:"会議",     icon:"👥", color:"#3b82f6", bg:"#eff6ff" },
+  visit:   { label:"訪問",     icon:"🏢", color:"#059669", bg:"#ecfdf5" },
+  call:    { label:"電話",     icon:"📞", color:"#f59e0b", bg:"#fffbeb" },
+  task:    { label:"タスク",   icon:"📋", color:"#8b5cf6", bg:"#f5f3ff" },
+  break_t: { label:"休憩",     icon:"☕", color:"#ec4899", bg:"#fdf2f8" },
+  online:  { label:"オンライン", icon:"💻", color:"#06b6d4", bg:"#ecfeff" },
+};
+
+const WD = ["日","月","火","水","木","金","土"];
+
+// ── Util ──────────────────────────────────────────────────────
+const fmt    = d => d.toISOString().split("T")[0];
+const fmtT   = d => d.toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit",hour12:false});
+const same   = (a,b) => fmt(a)===fmt(b);
+const today  = d => same(d, new Date());
+const wknd   = d => d.getDay()===0||d.getDay()===6;
+const addD   = (d,n) => { const r=new Date(d); r.setDate(r.getDate()+n); return r; };
+const uid    = () => `e${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+const monOf  = d => { const r=new Date(d); r.setDate(r.getDate()-((r.getDay()+6)%7)); r.setHours(0,0,0,0); return r; };
+const mGrid  = (y,m) => { const f=new Date(y,m,1); const o=(f.getDay()+6)%7; return Array.from({length:42},(_,i)=>new Date(y,m,i+1-o)); };
+
+// ── Demo Events ───────────────────────────────────────────────
+function buildDemo() {
+  const evts=[], now=new Date();
+  const tpl=[
+    {t:"朝礼",             tp:"meeting", h:9,  m:0,  dur:30},
+    {t:"チーム定例ミーティング", tp:"meeting", h:10, m:0,  dur:60},
+    {t:"A社クライアント訪問",   tp:"visit",   h:13, m:0,  dur:90},
+    {t:"企画ブレスト",       tp:"meeting", h:11, m:0,  dur:60},
+    {t:"開発スプリントレビュー", tp:"meeting", h:14, m:0,  dur:60},
+    {t:"お客様電話対応",     tp:"call",    h:10, m:30, dur:60},
+    {t:"ユーザーサポート",   tp:"call",    h:9,  m:0,  dur:120},
+    {t:"SNS投稿計画",       tp:"task",    h:11, m:0,  dur:45},
+    {t:"ランチ休憩",         tp:"break_t", h:12, m:0,  dur:60},
+    {t:"B社オンラインMTG",   tp:"online",  h:15, m:0,  dur:60},
+    {t:"コードレビュー",     tp:"task",    h:16, m:0,  dur:60},
+    {t:"営業報告書作成",     tp:"task",    h:15, m:30, dur:60},
+    {t:"マーケ戦略会議",     tp:"meeting", h:14, m:30, dur:60},
+    {t:"1on1 面談",         tp:"meeting", h:16, m:30, dur:30},
+    {t:"見積書作成",         tp:"task",    h:13, m:30, dur:60},
+    {t:"C社提案準備",       tp:"task",    h:10, m:0,  dur:90},
+    {t:"週次レポート",       tp:"task",    h:17, m:0,  dur:30},
+    {t:"進捗確認MTG",       tp:"online",  h:11, m:30, dur:30},
+    {t:"デザインレビュー",   tp:"meeting", h:15, m:0,  dur:45},
+  ];
+  for(let off=-14;off<=14;off++){
+    const d=addD(now,off);
+    if(wknd(d)) continue;
+    const seed=d.getDate()*7+d.getMonth()*31;
+    const cnt=6+(seed%5); const used=new Set();
+    for(let i=0;i<cnt;i++){
+      const ti=(seed*(i+1)*13+i*7)%tpl.length;
+      if(used.has(ti)) continue; used.add(ti);
+      const T=tpl[ti]; const si=(seed+i*3)%STAFF.length;
+      const s=new Date(d.getFullYear(),d.getMonth(),d.getDate(),T.h,T.m);
+      const e=new Date(s.getTime()+T.dur*60000);
+      evts.push({id:uid(),title:T.t,type:T.tp,staffId:STAFF[si].id,start:s,end:e,synced:true,desc:""});
+    }
+  }
+  return evts;
+}
+
+// ── Persistent Storage ────────────────────────────────────────
+function loadEvents() {
+  try {
+    const raw = localStorage.getItem("sch_events");
+    if (!raw) return buildDemo();
+    const parsed = JSON.parse(raw);
+    return parsed.map(e => ({...e, start: new Date(e.start), end: new Date(e.end)}));
+  } catch { return buildDemo(); }
+}
+function saveEvents(events) {
+  try { localStorage.setItem("sch_events", JSON.stringify(events)); } catch {}
+}
+
+// ── Mascots ───────────────────────────────────────────────────
+const Sheep = ({s=36}) => (
+  <svg width={s} height={s} viewBox="0 0 80 80" fill="none">
+    <g transform="translate(10,8)">
+      <circle cx="30" cy="42" r="22" fill="#FAF0E6"/>
+      <circle cx="16" cy="34" r="9" fill="#FFF8F0"/><circle cx="44" cy="34" r="9" fill="#FFF8F0"/>
+      <circle cx="30" cy="28" r="10" fill="#FFF8F0"/><circle cx="22" cy="24" r="7" fill="#FFF8F0"/><circle cx="38" cy="24" r="7" fill="#FFF8F0"/>
+      <circle cx="30" cy="44" r="14" fill="#FEF3C7"/>
+      <circle cx="25" cy="41" r="2.8" fill="#1E293B"/><circle cx="35" cy="41" r="2.8" fill="#1E293B"/>
+      <circle cx="26" cy="40" r="1" fill="#FFF"/><circle cx="36" cy="40" r="1" fill="#FFF"/>
+      <ellipse cx="30" cy="46" rx="2.2" ry="1.3" fill="#FDA4AF"/>
+      <path d="M27 49 Q30 52 33 49" stroke="#1E293B" strokeWidth="1.4" fill="none" strokeLinecap="round"/>
+      <path d="M16 28 Q11 18 18 22" stroke="#92400E" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+      <path d="M44 28 Q49 18 42 22" stroke="#92400E" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+    </g>
+  </svg>
+);
+const Dragon = ({s=40}) => (
+  <svg width={s} height={s} viewBox="0 0 80 80" fill="none">
+    <g transform="translate(10,6)">
+      <ellipse cx="30" cy="46" rx="16" ry="18" fill="#22C55E"/><circle cx="30" cy="34" r="16" fill="#4ADE80"/>
+      <circle cx="23" cy="30" r="4" fill="#FFF"/><circle cx="37" cy="30" r="4" fill="#FFF"/>
+      <circle cx="24" cy="30" r="2.2" fill="#1E293B"/><circle cx="38" cy="30" r="2.2" fill="#1E293B"/>
+      <path d="M25 38 Q30 42 35 38" stroke="#1E293B" strokeWidth="1.6" fill="none" strokeLinecap="round"/>
+      <path d="M21 18 L18 8 L26 16" fill="#22C55E"/><path d="M30 16 L30 6 L35 15" fill="#22C55E"/><path d="M39 18 L42 8 L34 16" fill="#22C55E"/>
+      <ellipse cx="30" cy="48" rx="7" ry="10" fill="#86EFAC"/>
+      <path d="M14 42 Q6 38 8 46 Q10 50 14 48" fill="#4ADE80"/><path d="M46 42 Q54 38 52 46 Q50 50 46 48" fill="#4ADE80"/>
+    </g>
+  </svg>
+);
+const Camel = ({s=36}) => (
+  <svg width={s} height={s} viewBox="0 0 80 80" fill="none">
+    <g transform="translate(10,8)">
+      <ellipse cx="30" cy="42" rx="18" ry="16" fill="#D2A679"/><ellipse cx="30" cy="30" r="12" fill="#DEB887"/>
+      <path d="M22 20 Q20 10 18 20" fill="#DEB887" stroke="#C4956A" strokeWidth="1.2"/>
+      <path d="M38 20 Q40 10 42 20" fill="#DEB887" stroke="#C4956A" strokeWidth="1.2"/>
+      <circle cx="25" cy="28" r="2.8" fill="#1E293B"/><circle cx="35" cy="28" r="2.8" fill="#1E293B"/>
+      <circle cx="25.8" cy="27" r="0.9" fill="#FFF"/><circle cx="35.8" cy="27" r="0.9" fill="#FFF"/>
+      <ellipse cx="30" cy="34" rx="4.5" ry="2.8" fill="#C4956A"/>
+      <circle cx="28.5" cy="33.5" r="0.8" fill="#1E293B"/><circle cx="31.5" cy="33.5" r="0.8" fill="#1E293B"/>
+      <path d="M27 37 Q30 39 33 37" stroke="#8B6914" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+      <ellipse cx="28" cy="40" rx="9" ry="5" fill="#C4956A"/>
+    </g>
+  </svg>
+);
+const MascotGroup = ({size=28}) => (
+  <div style={{display:"flex",alignItems:"flex-end",gap:0}}>
+    <Sheep s={size}/><Dragon s={size+4}/><Camel s={size}/>
+  </div>
+);
+
+// ── Styles ────────────────────────────────────────────────────
+const OVL  = {position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(10,14,39,.55)",backdropFilter:"blur(6px)",zIndex:80,display:"flex",alignItems:"center",justifyContent:"center",animation:"fadeIn .2s ease"};
+const MOD  = {background:"#fff",borderRadius:20,padding:"26px 24px",width:"94%",boxShadow:"0 25px 60px rgba(0,0,0,.28)",animation:"slideUp .3s ease",maxHeight:"92vh",overflowY:"auto"};
+const BTNP = {padding:"10px 20px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#0066ff,#2563eb)",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer",transition:"opacity .15s"};
+const BTNS = {padding:"10px 16px",borderRadius:10,border:"1.5px solid #e2e8f0",background:"#fff",color:"#475569",fontSize:13,fontWeight:600,cursor:"pointer"};
+const XBTN = {background:"#f1f5f9",border:"none",borderRadius:8,width:32,height:32,fontSize:16,cursor:"pointer",color:"#64748b",display:"flex",alignItems:"center",justifyContent:"center",transition:"background .15s"};
+const LBST = {fontSize:12,fontWeight:700,color:"#475569",marginBottom:4,display:"block"};
+const INST = {width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:14,outline:"none",background:"#fff",color:"#1a1a2e",boxSizing:"border-box",transition:"border-color .2s"};
+const CARD = {background:"#fff",borderRadius:16,boxShadow:"0 1px 4px rgba(0,0,0,.06),0 0 0 1px rgba(0,0,0,.03)",overflow:"hidden"};
+
+// ── Morning Alert ─────────────────────────────────────────────
+function MorningAlert({events, onClose}) {
+  const now = new Date();
+  const te = events.filter(e=>same(e.start,now)).sort((a,b)=>a.start-b.start);
+  const nx = te.find(e=>e.start>now);
+  return (
+    <div style={OVL} onClick={onClose}>
+      <div style={{...MOD,maxWidth:440,borderTop:"4px solid #f59e0b"}} onClick={e=>e.stopPropagation()}>
+        <div style={{textAlign:"center",marginBottom:20}}>
+          <div style={{display:"flex",justifyContent:"center",marginBottom:10}}><MascotGroup size={32}/></div>
+          <div style={{fontSize:12,color:"#f59e0b",fontWeight:700,letterSpacing:3,marginBottom:4}}>MORNING BRIEF</div>
+          <div style={{fontSize:24,fontWeight:900,color:"#1a1a2e"}}>おはようございます!</div>
+          <div style={{fontSize:13,color:"#64748b",marginTop:4}}>
+            {now.toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric",weekday:"long"})}
+          </div>
+        </div>
+        <div style={{background:"linear-gradient(135deg,#f8fafc,#eff6ff)",borderRadius:14,padding:18,marginBottom:18}}>
+          <div style={{fontSize:14,fontWeight:700,color:"#1a1a2e"}}>
+            本日は <span style={{color:"#0066ff",fontSize:28,fontWeight:900}}>{te.length}</span> 件の予定
+          </div>
+          {nx && <div style={{fontSize:12,color:"#64748b",marginTop:4}}>⏰ 次: {fmtT(nx.start)} {nx.title}</div>}
+        </div>
+        <div style={{maxHeight:260,overflowY:"auto",marginBottom:18}}>
+          {te.length===0 ? <div style={{textAlign:"center",padding:24,color:"#94a3b8",fontSize:14}}>本日の予定はありません 🎉</div> :
+          te.map(ev => {
+            const c=CATS[ev.type]||CATS.task, st=STAFF.find(s=>s.id===ev.staffId);
+            return (
+              <div key={ev.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:"1px solid #f1f5f9"}}>
+                <div style={{width:48,textAlign:"center",flexShrink:0,fontSize:13,fontWeight:800,color:"#1a1a2e"}}>{fmtT(ev.start)}</div>
+                <div style={{width:3,height:38,borderRadius:2,background:st?.color||"#94a3b8",flexShrink:0}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"#1a1a2e",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{c.icon} {ev.title}</div>
+                  <div style={{fontSize:11,color:"#64748b"}}>{fmtT(ev.start)}-{fmtT(ev.end)} · {st?.name}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <button onClick={onClose} style={{...BTNP,width:"100%",padding:14,fontSize:15,borderRadius:12}}>カレンダーを開く</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Event Detail ──────────────────────────────────────────────
+function EventDetail({event:ev, onClose, onDelete, onEdit}) {
+  if(!ev) return null;
+  const c=CATS[ev.type]||CATS.task, st=STAFF.find(s=>s.id===ev.staffId);
+  const dur=Math.round((ev.end-ev.start)/60000);
+  return (
+    <div style={OVL} onClick={onClose}>
+      <div style={{...MOD,maxWidth:420,borderTop:`4px solid ${c.color}`}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+          <div>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+              <span style={{fontSize:22}}>{c.icon}</span>
+              <span style={{fontSize:11,padding:"3px 10px",borderRadius:6,fontWeight:700,background:c.bg,color:c.color}}>{c.label}</span>
+              {ev.synced && <span style={{fontSize:10,padding:"3px 8px",borderRadius:6,background:"#ecfdf5",color:"#059669",fontWeight:600}}>✓ Google同期済</span>}
+            </div>
+            <div style={{fontSize:20,fontWeight:900,color:"#1a1a2e",lineHeight:1.3}}>{ev.title}</div>
+          </div>
+          <button onClick={onClose} style={XBTN}>✕</button>
+        </div>
+        <div style={{display:"grid",gap:16,marginBottom:22,background:"#f8fafc",borderRadius:12,padding:16}}>
+          {[
+            ["📅","日付",ev.start.toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric",weekday:"long"})],
+            ["🕐","時間",`${fmtT(ev.start)} - ${fmtT(ev.end)}（${dur}分間）`],
+          ].map(([ic,lb,vl])=>(
+            <div key={lb} style={{display:"flex",alignItems:"flex-start",gap:10}}>
+              <span style={{fontSize:17,lineHeight:"24px"}}>{ic}</span>
+              <div><div style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>{lb}</div><div style={{fontSize:14,color:"#1a1a2e",fontWeight:600}}>{vl}</div></div>
+            </div>
+          ))}
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <span style={{fontSize:17}}>👤</span>
+            <div>
+              <div style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>担当</div>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <div style={{width:24,height:24,borderRadius:"50%",background:st?.color,color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{st?.avatar}</div>
+                <span style={{fontSize:14,color:"#1a1a2e",fontWeight:600}}>{st?.name}（{st?.role}）</span>
+              </div>
+            </div>
+          </div>
+          {ev.desc && <div style={{display:"flex",alignItems:"flex-start",gap:10}}><span style={{fontSize:17}}>📝</span><div><div style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>メモ</div><div style={{fontSize:14,color:"#1a1a2e",fontWeight:500,lineHeight:1.5}}>{ev.desc}</div></div></div>}
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>{onEdit(ev);onClose()}} style={{...BTNS,flex:1}}>✏️ 編集</button>
+          <button onClick={()=>{
+            const url=`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(ev.title)}&dates=${ev.start.toISOString().replace(/[-:]/g,"").split(".")[0]}Z/${ev.end.toISOString().replace(/[-:]/g,"").split(".")[0]}Z`;
+            window.open(url,"_blank");
+          }} style={{...BTNS,flex:1}}>📅 Googleで開く</button>
+          <button onClick={()=>{onDelete(ev.id);onClose()}} style={{padding:"10px 14px",borderRadius:10,border:"none",cursor:"pointer",background:"#FEE2E2",color:"#DC2626",fontWeight:700,fontSize:13}}>🗑️</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Event Form ────────────────────────────────────────────────
+function EventForm({isOpen, onClose, onSave, editEvent:ed, defaultDate:dd, defaultStaff:ds}) {
+  const [title,setTitle]=useState("");
+  const [date,setDate]=useState("");
+  const [st,setSt]=useState("09:00");
+  const [et,setEt]=useState("10:00");
+  const [sid,setSid]=useState("s1");
+  const [type,setType]=useState("meeting");
+  const [desc,setDesc]=useState("");
+
+  useEffect(()=>{
+    if(!isOpen) return;
+    if(ed){setTitle(ed.title);setDate(fmt(ed.start));setSt(fmtT(ed.start));setEt(fmtT(ed.end));setSid(ed.staffId);setType(ed.type);setDesc(ed.desc||"");}
+    else{setTitle("");setDate(dd||fmt(new Date()));setSt("09:00");setEt("10:00");setSid(ds||"s1");setType("meeting");setDesc("");}
+  },[isOpen,ed,dd,ds]);
+
+  if(!isOpen) return null;
+  const save=()=>{
+    if(!title.trim()) return;
+    const [y,mo,d]=date.split("-").map(Number);
+    const [sh,sm]=st.split(":").map(Number);
+    const [eh,em]=et.split(":").map(Number);
+    onSave({id:ed?ed.id:uid(),title:title.trim(),type,staffId:sid,desc,start:new Date(y,mo-1,d,sh,sm),end:new Date(y,mo-1,d,eh,em),synced:false});
+    onClose();
+  };
+
+  return (
+    <div style={OVL} onClick={onClose}>
+      <div style={{...MOD,maxWidth:460}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:22}}>
+          <div style={{fontSize:19,fontWeight:900,color:"#1a1a2e"}}>{ed?"予定を編集":"新規予定を作成"}</div>
+          <button onClick={onClose} style={XBTN}>✕</button>
+        </div>
+        <div style={{display:"grid",gap:14}}>
+          <div><label style={LBST}>タイトル *</label><input value={title} onChange={e=>setTitle(e.target.value)} placeholder="例: チーム定例ミーティング" style={INST}/></div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div><label style={LBST}>日付</label><input type="date" value={date} onChange={e=>setDate(e.target.value)} style={INST}/></div>
+            <div><label style={LBST}>担当者</label><select value={sid} onChange={e=>setSid(e.target.value)} style={INST}>{STAFF.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div><label style={LBST}>開始</label><input type="time" value={st} onChange={e=>setSt(e.target.value)} style={INST}/></div>
+            <div><label style={LBST}>終了</label><input type="time" value={et} onChange={e=>setEt(e.target.value)} style={INST}/></div>
+          </div>
+          <div>
+            <label style={LBST}>カテゴリ</label>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {Object.entries(CATS).map(([k,v])=>(
+                <button key={k} onClick={()=>setType(k)} style={{padding:"6px 12px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",border:type===k?`2px solid ${v.color}`:"1.5px solid #e2e8f0",background:type===k?v.bg:"#fff",color:type===k?v.color:"#64748b",transition:"all .15s"}}>{v.icon} {v.label}</button>
+              ))}
+            </div>
+          </div>
+          <div><label style={LBST}>メモ</label><textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={2} placeholder="補足事項..." style={{...INST,resize:"vertical",fontFamily:"inherit"}}/></div>
+          <div style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"#ecfdf5",borderRadius:10,border:"1px solid #bbf7d0"}}>
+            <span>📅</span><span style={{fontSize:12,color:"#059669",fontWeight:600}}>Googleカレンダーへ自動同期されます</span>
+          </div>
+        </div>
+        <button onClick={save} disabled={!title.trim()} style={{...BTNP,width:"100%",marginTop:20,padding:14,fontSize:15,borderRadius:12,opacity:title.trim()?1:.4,cursor:title.trim()?"pointer":"default"}}>{ed?"変更を保存":"予定を作成"}</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Voice Input ───────────────────────────────────────────────
+function VoiceInput({isOpen, onClose, onCreated}) {
+  const [phase,setPhase]=useState("idle");
+  const [txt,setTxt]=useState("");
+  const [parsed,setParsed]=useState(null);
+  const [err,setErr]=useState("");
+  const rec=useRef(null);
+
+  const reset=()=>{setPhase("idle");setTxt("");setParsed(null);setErr("");};
+  useEffect(()=>{if(!isOpen){if(rec.current){try{rec.current.stop()}catch{}}rec.current=null;reset()}},[isOpen]);
+
+  const startR=()=>{
+    setErr("");setTxt("");setParsed(null);
+    try{
+      const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+      if(!SR){setErr("このブラウザは音声認識に対応していません。Chromeをお使いください。");return;}
+      const r=new SR();r.lang="ja-JP";r.interimResults=true;
+      try{r.continuous=true}catch{}
+      r.onresult=e=>{let t="";for(let i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;setTxt(t)};
+      r.onerror=e=>{if(e.error==="not-allowed")setErr("マイクへのアクセスを許可してください");else if(e.error!=="aborted")setErr(`音声認識エラー: ${e.error}`)};
+      r.onend=()=>{setPhase(p=>{if(p==="listening"&&rec.current){try{rec.current.start()}catch{return "transcribed";}return "listening";}return p;})};
+      r.start();rec.current=r;setPhase("listening");
+    }catch{setErr("音声認識を開始できませんでした")}
+  };
+
+  const stopR=()=>{if(rec.current){try{rec.current.stop()}catch{}rec.current=null}if(phase==="listening")setPhase(txt?"transcribed":"idle")};
+
+  const parseAI=async()=>{
+    if(!txt.trim())return;setPhase("parsing");setErr("");
+    try{
+      const now=new Date();
+      const res=await fetch("https://api.anthropic.com/v1/messages",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,
+          messages:[{role:"user",content:`スケジュール解析AI。音声入力からJSON形式のみ抽出。\n現在:${now.toISOString()} JST ${now.toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric",weekday:"long"})}\nスタッフ:${STAFF.map(s=>`${s.name}(${s.id})`).join(",")}\n入力:「${txt}」\nJSON:{"title":"","date":"YYYY-MM-DD","startTime":"HH:MM","endTime":"HH:MM","staffId":"s1","type":"meeting|visit|call|task|break_t|online","description":""}`}]})
+      });
+      const data=await res.json();
+      const text=data.content?.map(c=>c.text||"").join("")||"";
+      setParsed(JSON.parse(text.replace(/```json|```/g,"").trim()));setPhase("parsed");
+    }catch{fallbackParse()}
+  };
+
+  const fallbackParse=()=>{
+    const now=new Date(),tmr=addD(now,1);
+    let title="新規予定",type="meeting";
+    if(txt.includes("会議")||txt.includes("ミーティング"))title=txt.includes("定例")?"定例ミーティング":"チーム会議";
+    else if(txt.includes("訪問")){title="クライアント訪問";type="visit";}
+    else if(txt.includes("電話")){title="電話対応";type="call";}
+    else if(txt.includes("タスク")||txt.includes("作業")){title="作業タスク";type="task";}
+    else title=txt.slice(0,20)||"新規予定";
+    const tm=txt.match(/(\d{1,2})[時じ:：]/);const h=tm?parseInt(tm[1]):10;
+    const d=txt.includes("明日")?tmr:txt.includes("明後日")?addD(now,2):now;
+    let si="s1";for(const s of STAFF)if(txt.includes(s.name.split(" ")[0])||txt.includes(s.name.split(" ")[1])){si=s.id;break;}
+    setParsed({title,date:fmt(d),startTime:`${String(h).padStart(2,"0")}:00`,endTime:`${String(h+1).padStart(2,"0")}:00`,staffId:si,type,description:`音声入力: ${txt}`});
+    setPhase("parsed");
+  };
+
+  const confirm=()=>{
+    if(!parsed)return;
+    const [y,mo,d]=parsed.date.split("-").map(Number);
+    const [sh,sm]=parsed.startTime.split(":").map(Number);
+    const [eh,em]=parsed.endTime.split(":").map(Number);
+    onCreated({id:uid(),title:parsed.title,type:parsed.type||"meeting",staffId:parsed.staffId||"s1",desc:parsed.description||"",start:new Date(y,mo-1,d,sh,sm),end:new Date(y,mo-1,d,eh,em),synced:false});
+    onClose();
+  };
+
+  if(!isOpen)return null;
+  return (
+    <div style={OVL} onClick={onClose}>
+      <div style={{...MOD,maxWidth:460}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <Dragon s={34}/>
+            <div><div style={{fontSize:17,fontWeight:900,color:"#1a1a2e"}}>音声でスケジュール入力</div><div style={{fontSize:11,color:"#94a3b8"}}>AIが自然な言葉から予定を自動作成</div></div>
+          </div>
+          <button onClick={onClose} style={XBTN}>✕</button>
+        </div>
+
+        <div style={{textAlign:"center",padding:"20px 0"}}>
+          {phase==="idle"&&<>
+            <button onClick={startR} onTouchEnd={e=>{e.preventDefault();startR()}} style={{width:92,height:92,borderRadius:"50%",border:"none",cursor:"pointer",background:"linear-gradient(135deg,#0066ff,#3b82f6)",color:"#fff",fontSize:36,boxShadow:"0 8px 30px rgba(0,102,255,.35)",transition:"transform .2s",WebkitTapHighlightColor:"transparent"}}
+              onMouseEnter={e=>e.currentTarget.style.transform="scale(1.08)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>🎤</button>
+            <div style={{marginTop:12,fontSize:13,color:"#64748b"}}>ボタンを押して話しかけてください</div>
+          </>}
+          {phase==="listening"&&<>
+            <button onClick={stopR} onTouchEnd={e=>{e.preventDefault();stopR()}} style={{width:92,height:92,borderRadius:"50%",border:"none",cursor:"pointer",background:"linear-gradient(135deg,#e11d48,#f43f5e)",color:"#fff",fontSize:36,animation:"pulseRing 1.5s ease-in-out infinite",WebkitTapHighlightColor:"transparent"}}>⏹</button>
+            <div style={{marginTop:12,fontSize:13,color:"#e11d48",fontWeight:700}}>🔴 録音中... 停止ボタンを押してください</div>
+            {txt&&<div style={{marginTop:14,padding:"12px 16px",borderRadius:12,background:"#f8fafc",border:"1px dashed #cbd5e1",fontSize:14,color:"#475569",lineHeight:1.6}}>「{txt}」</div>}
+          </>}
+        </div>
+
+        {(phase==="transcribed"||phase==="parsing")&&(
+          <div style={{background:"#f8fafc",borderRadius:12,padding:16,marginBottom:12,border:"1px solid #e2e8f0"}}>
+            <div style={{fontSize:11,color:"#64748b",fontWeight:700,letterSpacing:1,marginBottom:6}}>認識結果</div>
+            <div style={{fontSize:15,color:"#1a1a2e",lineHeight:1.6,fontWeight:500}}>「{txt}」</div>
+            <div style={{display:"flex",gap:8,marginTop:12}}>
+              <button onClick={parseAI} disabled={phase==="parsing"} style={{...BTNP,flex:1,background:phase==="parsing"?"linear-gradient(135deg,#94a3b8,#94a3b8)":"linear-gradient(135deg,#8b5cf6,#a855f7)"}}>
+                {phase==="parsing"?"✨ AI解析中...":"✨ AIで予定を自動作成"}
+              </button>
+              <button onClick={reset} style={BTNS}>🔄</button>
+            </div>
+          </div>
+        )}
+
+        {phase==="parsed"&&parsed&&(
+          <div style={{background:"#ecfdf5",borderRadius:12,padding:16,border:"2px solid #22c55e",marginBottom:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:12}}>
+              <span style={{fontSize:18}}>✅</span><span style={{fontSize:14,fontWeight:800,color:"#059669"}}>AI解析完了</span>
+            </div>
+            <div style={{display:"grid",gap:8}}>
+              {[["タイトル",parsed.title],["日時",`${parsed.date}  ${parsed.startTime} - ${parsed.endTime}`],["担当",STAFF.find(s=>s.id===parsed.staffId)?.name||"未指定"],["種類",`${CATS[parsed.type]?.icon||""} ${CATS[parsed.type]?.label||parsed.type}`]].map(([k,v])=>(
+                <div key={k} style={{display:"flex",gap:10,fontSize:13}}>
+                  <span style={{color:"#64748b",minWidth:56,fontWeight:700}}>{k}</span>
+                  <span style={{color:"#1a1a2e",fontWeight:600}}>{v}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:14}}>
+              <button onClick={confirm} style={{...BTNP,flex:1,background:"linear-gradient(135deg,#059669,#10b981)",borderRadius:10}}>✅ この内容で登録</button>
+              <button onClick={reset} style={BTNS}>やり直す</button>
+            </div>
+          </div>
+        )}
+
+        {err&&<div style={{padding:"10px 14px",borderRadius:10,background:"#FEF2F2",border:"1px solid #FECACA",color:"#DC2626",fontSize:13,marginTop:8}}>{err}</div>}
+
+        {phase==="idle"&&(
+          <div style={{marginTop:8,padding:"14px 14px",background:"#f8fafc",borderRadius:12}}>
+            <div style={{fontSize:11,color:"#94a3b8",fontWeight:700,marginBottom:8}}>💡 タップで入力例をすぐ試せます</div>
+            {["明日10時からチーム会議を追加","来週月曜に佐藤さんとクライアント訪問","今日の14時から1時間コードレビュー"].map(ex=>(
+              <div key={ex} onClick={()=>{setTxt(ex);setPhase("transcribed")}} style={{fontSize:12,color:"#0066ff",padding:"6px 0",cursor:"pointer",borderBottom:"1px solid #f1f5f9",transition:"background .15s"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#eff6ff"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                「{ex}」
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Event Block ───────────────────────────────────────────────
+function EvBlock({ev, compact, onClick}) {
+  const c=CATS[ev.type]||CATS.task;
+  const [h,setH]=useState(false);
+  return (
+    <div onClick={()=>onClick(ev)} onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)}
+      style={{background:h?c.bg:`${c.bg}dd`,borderLeft:`3px solid ${c.color}`,borderRadius:6,padding:compact?"3px 5px":"5px 8px",marginBottom:2,cursor:"pointer",transform:h?"translateX(2px)":"none",transition:"all .15s",overflow:"hidden"}}>
+      <div style={{fontSize:compact?10:11,fontWeight:700,color:"#1a1a2e",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1.3}}>{c.icon} {ev.title}</div>
+      {!compact&&<div style={{fontSize:10,color:"#64748b",marginTop:1}}>{fmtT(ev.start)}-{fmtT(ev.end)}</div>}
+    </div>
+  );
+}
+
+function Chip({active,onClick,color,label}) {
+  return (
+    <button onClick={onClick} style={{padding:"4px 12px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4,transition:"all .15s",border:active?`2px solid ${color}`:"1.5px solid #e2e8f0",background:active?`${color}15`:"#fff",color:active?color:"#64748b"}}>
+      <div style={{width:7,height:7,borderRadius:"50%",background:color,opacity:active?1:.4}}/>{label}
+    </button>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MAIN APP
+// ═══════════════════════════════════════════════════════════════
+function App() {
+  const [events,setEvents]=useState(()=>loadEvents());
+  const [cur,setCur]=useState(new Date());
+  const [view,setView]=useState("week");
+  const [selStaff,setSelStaff]=useState(null);
+  const [selEv,setSelEv]=useState(null);
+  const [showForm,setShowForm]=useState(false);
+  const [editEv,setEditEv]=useState(null);
+  const [showVoice,setShowVoice]=useState(false);
+  const [showAlert,setShowAlert]=useState(false);
+  const [sync,setSync]=useState("synced");
+  const [toast,setToast]=useState(null);
+  const [formDef,setFormDef]=useState({});
+
+  useEffect(()=>{saveEvents(events)},[events]);
+
+  const notify=(m,t="success")=>{setToast({m,t});setTimeout(()=>setToast(null),3000)};
+  const doSync=()=>{setSync("syncing");setTimeout(()=>{setSync("synced");setEvents(p=>p.map(e=>({...e,synced:true})));notify("📅 Googleカレンダー同期完了","info")},1800)};
+
+  const addEv=ev=>{setEvents(p=>[...p,ev]);notify("✅ 予定を登録しました");doSync()};
+  const updEv=ev=>{setEvents(p=>p.map(e=>e.id===ev.id?{...ev,synced:false}:e));notify("✏️ 予定を更新しました");doSync()};
+  const delEv=id=>{setEvents(p=>p.filter(e=>e.id!==id));notify("🗑️ 予定を削除しました","warning")};
+  const saveEv=ev=>{if(editEv)updEv(ev);else addEv(ev);setEditEv(null)};
+  const openNew=(d,si)=>{setEditEv(null);setFormDef({date:d?fmt(d):fmt(cur),staff:si||"s1"});setShowForm(true)};
+  const openEdit=ev=>{setEditEv(ev);setShowForm(true)};
+  const nav=dir=>{const d=new Date(cur);d.setDate(d.getDate()+dir*(view==="month"?30:view==="week"?7:1));setCur(d)};
+  const resetData=()=>{const d=buildDemo();setEvents(d);notify("🔄 デモデータをリセットしました","info")};
+
+  const vs=selStaff?STAFF.filter(s=>s.id===selStaff):STAFF;
+  const wd=useMemo(()=>{const m=monOf(cur);return Array.from({length:7},(_,i)=>addD(m,i))},[cur]);
+  const md=useMemo(()=>mGrid(cur.getFullYear(),cur.getMonth()),[cur]);
+  const eDS=(d,si)=>events.filter(e=>same(e.start,d)&&e.staffId===si).sort((a,b)=>a.start-b.start);
+  const eD=d=>events.filter(e=>same(e.start,d)).sort((a,b)=>a.start-b.start);
+
+  useEffect(()=>{const h=new Date().getHours();if(h>=7&&h<=10)setShowAlert(true)},[]);
+
+  const hTitle=useMemo(()=>{
+    if(view==="month")return cur.toLocaleDateString("ja-JP",{year:"numeric",month:"long"});
+    if(view==="day")return cur.toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric",weekday:"long"});
+    const m=wd[0],s=wd[6];
+    return m.getMonth()===s.getMonth()?`${m.toLocaleDateString("ja-JP",{year:"numeric",month:"long"})} ${m.getDate()}日 - ${s.getDate()}日`:`${m.getMonth()+1}/${m.getDate()} - ${s.getMonth()+1}/${s.getDate()}`;
+  },[cur,view,wd]);
+
+  const tCnt=events.filter(e=>same(e.start,new Date())).length;
+
+  return (
+    <div>
+      {/* ═ HEADER ═ */}
+      <header style={{background:"linear-gradient(135deg,#0a0e27 0%,#141937 60%,#1a1f3d 100%)",padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:"0 2px 16px rgba(0,0,0,.2)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <MascotGroup size={22}/>
+          <div>
+            <div style={{fontSize:15,fontWeight:900,color:"#fff",lineHeight:1.2}}>AIさんいんコンセルジュ</div>
+            <div style={{fontSize:10,color:"#8b93b0",fontWeight:600,letterSpacing:2}}>スケジュールくん</div>
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <div style={{display:"flex",alignItems:"center",gap:4,padding:"4px 10px",borderRadius:20,background:sync==="synced"?"rgba(5,150,105,.15)":"rgba(249,115,22,.15)"}}>
+            <div style={{width:7,height:7,borderRadius:"50%",background:sync==="synced"?"#10b981":"#f97316",animation:sync==="syncing"?"pulseRing 1.2s infinite":"none"}}/>
+            <span style={{fontSize:10,color:sync==="synced"?"#6ee7b7":"#fdba74",fontWeight:600}}>{sync==="synced"?"Google同期済":"同期中..."}</span>
+          </div>
+          <button onClick={resetData} title="デモデータリセット" style={{background:"rgba(255,255,255,.08)",border:"none",borderRadius:8,padding:"6px 10px",cursor:"pointer",color:"#fff",fontSize:13}}>🔄</button>
+          <button onClick={()=>setShowAlert(true)} style={{background:"rgba(255,255,255,.08)",border:"none",borderRadius:8,padding:"6px 10px",cursor:"pointer",color:"#fff",fontSize:15,position:"relative"}}>
+            🔔{tCnt>0&&<span style={{position:"absolute",top:-2,right:-2,width:16,height:16,borderRadius:"50%",background:"#e11d48",color:"#fff",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{tCnt}</span>}
+          </button>
+        </div>
+      </header>
+
+      {/* ═ TOOLBAR ═ */}
+      <div style={{background:"#fff",borderBottom:"1px solid #e5e7eb",padding:"8px 12px",display:"flex",flexWrap:"wrap",gap:8,alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <button onClick={()=>nav(-1)} style={{background:"#f1f5f9",border:"none",borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:14,fontWeight:700,color:"#374151"}}>◀</button>
+          <button onClick={()=>setCur(new Date())} style={{background:"#0066ff",border:"none",borderRadius:8,padding:"5px 12px",cursor:"pointer",fontSize:11,fontWeight:700,color:"#fff"}}>今日</button>
+          <button onClick={()=>nav(1)} style={{background:"#f1f5f9",border:"none",borderRadius:8,padding:"5px 10px",cursor:"pointer",fontSize:14,fontWeight:700,color:"#374151"}}>▶</button>
+          <span style={{fontSize:14,fontWeight:800,color:"#1a1a2e",marginLeft:4,whiteSpace:"nowrap"}}>{hTitle}</span>
+        </div>
+        <div style={{display:"flex",gap:3}}>
+          {[["day","日"],["week","週"],["month","月"]].map(([k,l])=>(
+            <button key={k} onClick={()=>setView(k)} style={{padding:"5px 14px",borderRadius:7,border:"none",cursor:"pointer",fontSize:12,fontWeight:700,background:view===k?"#0a0e27":"#f1f5f9",color:view===k?"#fff":"#64748b",transition:"all .15s"}}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* ═ STAFF FILTER ═ */}
+      <div style={{background:"#fff",borderBottom:"1px solid #e5e7eb",padding:"6px 12px",display:"flex",gap:5,overflowX:"auto"}}>
+        <Chip active={!selStaff} onClick={()=>setSelStaff(null)} color="#0a0e27" label="全員"/>
+        {STAFF.map(s=><Chip key={s.id} active={selStaff===s.id} onClick={()=>setSelStaff(selStaff===s.id?null:s.id)} color={s.color} label={s.name}/>)}
+      </div>
+
+      {/* ═ CALENDAR ═ */}
+      <div style={{padding:"10px 8px 120px",maxWidth:1280,margin:"0 auto"}}>
+
+        {/* WEEK */}
+        {view==="week"&&(
+          <div style={CARD}><div style={{overflowX:"auto"}}><div style={{minWidth:820}}>
+            <div style={{display:"grid",gridTemplateColumns:"110px repeat(7,1fr)",borderBottom:"2px solid #e5e7eb"}}>
+              <div style={{padding:8,background:"#f8fafc",borderRight:"1px solid #e5e7eb"}}><span style={{fontSize:11,color:"#94a3b8",fontWeight:700}}>スタッフ / 日付</span></div>
+              {wd.map((d,i)=>(
+                <div key={i} onClick={()=>{setCur(d);setView("day")}} style={{padding:"6px 4px",textAlign:"center",cursor:"pointer",borderRight:"1px solid #f1f5f9",background:today(d)?"#eff6ff":"#f8fafc",transition:"background .15s"}}>
+                  <div style={{fontSize:11,fontWeight:600,color:d.getDay()===0?"#e11d48":d.getDay()===6?"#0066ff":"#64748b"}}>{WD[d.getDay()]}</div>
+                  <div style={{fontSize:17,fontWeight:800,width:30,height:30,lineHeight:"30px",borderRadius:"50%",margin:"2px auto",background:today(d)?"#0066ff":"transparent",color:today(d)?"#fff":d.getDay()===0?"#e11d48":d.getDay()===6?"#0066ff":"#1a1a2e"}}>{d.getDate()}</div>
+                </div>
+              ))}
+            </div>
+            {vs.map(st=>(
+              <div key={st.id} style={{display:"grid",gridTemplateColumns:"110px repeat(7,1fr)",borderBottom:"1px solid #f1f5f9",minHeight:72}}>
+                <div style={{padding:"8px 6px",borderRight:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:6,background:"#fafbfc"}}>
+                  <div style={{width:32,height:32,borderRadius:"50%",background:st.color,flexShrink:0,color:"#fff",fontSize:12,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 2px 8px ${st.color}40`}}>{st.avatar}</div>
+                  <div style={{minWidth:0}}><div style={{fontSize:12,fontWeight:700,color:"#1a1a2e",lineHeight:1.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{st.name}</div><div style={{fontSize:10,color:"#94a3b8"}}>{st.role}</div></div>
+                </div>
+                {wd.map((d,di)=>{
+                  const de=eDS(d,st.id);
+                  return (
+                    <div key={di} onDoubleClick={()=>openNew(d,st.id)} style={{padding:"3px 2px",borderRight:"1px solid #f3f4f6",background:wknd(d)?"#fafbfc":today(d)?"#fafcff":"#fff",cursor:"default"}}>
+                      {de.map(ev=><EvBlock key={ev.id} ev={ev} compact onClick={setSelEv}/>)}
+                      {de.length===0&&!wknd(d)&&(
+                        <div onClick={()=>openNew(d,st.id)} style={{height:"100%",minHeight:32,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",borderRadius:6,color:"transparent",transition:"all .15s",fontSize:11}}
+                          onMouseEnter={e=>{e.currentTarget.style.background="#f0f4ff";e.currentTarget.style.color="#0066ff";e.currentTarget.textContent="＋ 追加"}}
+                          onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="transparent";e.currentTarget.textContent=""}}/>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div></div></div>
+        )}
+
+        {/* DAY */}
+        {view==="day"&&(
+          <div style={CARD}><div style={{overflowX:"auto"}}><div style={{minWidth:Math.max(400,vs.length*120+80)}}>
+            <div style={{display:"grid",gridTemplateColumns:`80px repeat(${vs.length},1fr)`,borderBottom:"2px solid #e5e7eb"}}>
+              <div style={{padding:8,background:"#f8fafc",borderRight:"1px solid #e5e7eb"}}><span style={{fontSize:11,color:"#94a3b8",fontWeight:700}}>時間</span></div>
+              {vs.map(s=>(
+                <div key={s.id} style={{padding:"8px 6px",textAlign:"center",background:"#f8fafc",borderRight:"1px solid #f1f5f9"}}>
+                  <div style={{width:28,height:28,borderRadius:"50%",background:s.color,color:"#fff",fontSize:11,fontWeight:800,display:"inline-flex",alignItems:"center",justifyContent:"center"}}>{s.avatar}</div>
+                  <div style={{fontSize:11,fontWeight:700,color:"#1a1a2e",marginTop:2}}>{s.name}</div>
+                </div>
+              ))}
+            </div>
+            {Array.from({length:12},(_,i)=>i+8).map(h=>(
+              <div key={h} style={{display:"grid",gridTemplateColumns:`80px repeat(${vs.length},1fr)`,borderBottom:"1px solid #f1f5f9",minHeight:64}}>
+                <div style={{padding:"6px 8px",borderRight:"1px solid #e5e7eb",background:"#fafbfc",fontSize:12,fontWeight:700,color:"#64748b"}}>{String(h).padStart(2,"0")}:00</div>
+                {vs.map(s=>{
+                  const he=eDS(cur,s.id).filter(e=>e.start.getHours()===h);
+                  return (
+                    <div key={s.id} onDoubleClick={()=>openNew(cur,s.id)} style={{padding:"3px 4px",borderRight:"1px solid #f3f4f6",background:h===12?"#fefce8":"#fff"}}>
+                      {he.map(ev=><EvBlock key={ev.id} ev={ev} onClick={setSelEv}/>)}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div></div></div>
+        )}
+
+        {/* MONTH */}
+        {view==="month"&&(
+          <div style={CARD}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",borderBottom:"1px solid #e5e7eb"}}>
+              {WD.slice(1).concat(WD[0]).map((d,i)=>(
+                <div key={d} style={{padding:"8px 4px",textAlign:"center",fontSize:12,fontWeight:700,background:"#f8fafc",color:i===5?"#0066ff":i===6?"#e11d48":"#64748b"}}>{d}</div>
+              ))}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>
+              {md.map((d,i)=>{
+                const de=eD(d);const cm=d.getMonth()===cur.getMonth();
+                return (
+                  <div key={i} onClick={()=>{setCur(d);setView("day")}} style={{minHeight:80,padding:3,borderRight:"1px solid #f3f4f6",borderBottom:"1px solid #f3f4f6",background:today(d)?"#eff6ff":!cm?"#fafbfc":"#fff",cursor:"pointer",opacity:cm?1:.35,transition:"background .15s"}}>
+                    <div style={{fontSize:12,fontWeight:today(d)?800:600,width:24,height:24,lineHeight:"24px",textAlign:"center",borderRadius:"50%",background:today(d)?"#0066ff":"transparent",color:today(d)?"#fff":d.getDay()===0?"#e11d48":d.getDay()===6?"#0066ff":"#374151",marginBottom:1}}>{d.getDate()}</div>
+                    {de.slice(0,3).map(ev=>{const s=STAFF.find(x=>x.id===ev.staffId);return <div key={ev.id} style={{fontSize:9,padding:"1px 4px",borderRadius:3,marginBottom:1,background:s?.color||"#94a3b8",color:"#fff",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ev.title}</div>})}
+                    {de.length>3&&<div style={{fontSize:9,color:"#64748b",fontWeight:700,paddingLeft:2}}>+{de.length-3}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ═ FABs ═ */}
+      <div style={{position:"fixed",bottom:24,right:16,display:"flex",flexDirection:"column",gap:10,zIndex:40}}>
+        <button onClick={()=>setShowVoice(true)} title="音声入力" style={{width:54,height:54,borderRadius:"50%",border:"none",background:"linear-gradient(135deg,#8b5cf6,#6d28d9)",color:"#fff",fontSize:22,cursor:"pointer",boxShadow:"0 4px 20px rgba(139,92,246,.45)",display:"flex",alignItems:"center",justifyContent:"center",transition:"transform .2s"}}
+          onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>🎤</button>
+        <button onClick={()=>openNew()} title="新規予定" style={{width:54,height:54,borderRadius:"50%",border:"none",background:"linear-gradient(135deg,#0066ff,#2563eb)",color:"#fff",fontSize:26,cursor:"pointer",boxShadow:"0 4px 20px rgba(0,102,255,.45)",display:"flex",alignItems:"center",justifyContent:"center",transition:"transform .2s"}}
+          onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"} onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>＋</button>
+      </div>
+
+      {/* ═ MASCOTS ═ */}
+      <div style={{position:"fixed",bottom:6,left:12,zIndex:30,pointerEvents:"none",display:"flex",alignItems:"flex-end",opacity:.85}}>
+        <div style={{animation:"bounceY 3s ease-in-out infinite"}}><Sheep s={38}/></div>
+        <div style={{animation:"bounceY 3s ease-in-out infinite .4s"}}><Dragon s={42}/></div>
+        <div style={{animation:"bounceY 3s ease-in-out infinite .8s"}}><Camel s={38}/></div>
+      </div>
+
+      {/* ═ MODALS ═ */}
+      {showAlert&&<MorningAlert events={events} onClose={()=>setShowAlert(false)}/>}
+      <EventDetail event={selEv} onClose={()=>setSelEv(null)} onDelete={delEv} onEdit={openEdit}/>
+      <EventForm isOpen={showForm} onClose={()=>{setShowForm(false);setEditEv(null)}} onSave={saveEv} editEvent={editEv} defaultDate={formDef.date} defaultStaff={formDef.staff}/>
+      <VoiceInput isOpen={showVoice} onClose={()=>setShowVoice(false)} onCreated={addEv}/>
+
+      {/* ═ TOAST ═ */}
+      {toast&&<div style={{position:"fixed",bottom:100,left:"50%",transform:"translateX(-50%)",background:toast.t==="warning"?"#d97706":toast.t==="info"?"#0066ff":"#059669",color:"#fff",padding:"10px 24px",borderRadius:50,fontSize:13,fontWeight:600,zIndex:9999,boxShadow:"0 8px 30px rgba(0,0,0,.25)",animation:"toastSlide .3s ease",whiteSpace:"nowrap"}}>{toast.m}</div>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
