@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0e27">
+<title>AIさんいんコンセルジュ スケジュールくん v3</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📅</text></svg>">
+<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22%E3%82%B9%E3%82%B1%E3%82%B8%E3%83%A5%E3%83%BC%E3%83%AB%E3%81%8F%E3%82%93%22%2C%22short_name%22%3A%22%E3%82%B9%E3%82%B1%E3%82%B8%E3%83%A5%E3%83%BC%E3%83%AB%E3%81%8F%E3%82%93%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230a0e27%22%2C%22theme_color%22%3A%22%230a0e27%22%7D">
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230a0e27'/><text x='50' y='68' font-size='60' text-anchor='middle'>📅</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body,#root{height:100%;width:100%}
+body{font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif;background:#f0f2f5;color:#1a1a2e;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-thumb{background:#c1c8d4;border-radius:4px}
+@keyframes pulseRing{0%,100%{box-shadow:0 0 0 12px rgba(225,29,72,.15)}50%{box-shadow:0 0 0 20px rgba(225,29,72,.05)}}
+@keyframes toastSlide{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+@keyframes bounceY{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+@keyframes fadeIn{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+@keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes typing{0%{opacity:.3}50%{opacity:1}100%{opacity:.3}}
+@keyframes glow{0%,100%{filter:brightness(1)}50%{filter:brightness(1.3)}}
+@keyframes confetti{0%{transform:translateY(0) rotate(0)}100%{transform:translateY(100px) rotate(360deg);opacity:0}}
+input,select,textarea,button{font-family:inherit}
+.drag-over{background:#dbeafe !important;outline:2px dashed #3b82f6}
+[data-babel-warning]{display:none !important}
+</style>
+<script>
+// Suppress Babel standalone warning
+(function(){var w=window.console.warn;window.console.warn=function(){if(arguments[0]&&typeof arguments[0]==='string'&&arguments[0].indexOf('in-browser Babel')>-1)return;w.apply(console,arguments)};window.addEventListener('DOMContentLoaded',function(){setTimeout(function(){var els=document.querySelectorAll('pre');for(var i=0;i<els.length;i++){if(els[i].textContent&&els[i].textContent.indexOf('in-browser Babel')>-1){els[i].style.display='none';els[i].remove()}}},100)})})();
+</script>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script>
+// Remove Babel warning element immediately after Babel loads
+(function check(){var p=document.querySelectorAll('body > pre, body > div');for(var i=0;i<p.length;i++){var t=p[i].textContent||'';if(t.indexOf('Babel')>-1&&t.indexOf('precompile')>-1){p[i].remove();return}}setTimeout(check,50)})();
+</script>
+<script type="text/babel">
+const {useState,useEffect,useRef,useMemo,useCallback}=React;
+
+// ═══ DATA ═══════════════════════════════════════════════
+const STAFF=[
+  {id:"s1",name:"岩成 太郎",role:"営業部長",color:"#0066ff",avatar:"岩"},
+  {id:"s2",name:"佐藤 花子",role:"企画担当",color:"#8b5cf6",avatar:"佐"},
+  {id:"s3",name:"田中 一郎",role:"開発リーダー",color:"#059669",avatar:"田"},
+  {id:"s4",name:"山田 美咲",role:"カスタマーサポート",color:"#e11d48",avatar:"山"},
+  {id:"s5",name:"鈴木 健太",role:"マーケティング",color:"#d97706",avatar:"鈴"},
+];
+
+// 案8: 会議室・車両リソース
+const RESOURCES=[
+  {id:"r1",name:"会議室A",type:"room",color:"#475569",avatar:"A"},
+  {id:"r2",name:"会議室B",type:"room",color:"#64748b",avatar:"B"},
+  {id:"r3",name:"社用車1号",type:"car",color:"#78716c",avatar:"🚗"},
+];
+
+const CATS={
+  meeting:{label:"会議",icon:"👥",color:"#3b82f6",bg:"#eff6ff"},
+  visit:{label:"訪問",icon:"🏢",color:"#059669",bg:"#ecfdf5"},
+  call:{label:"電話",icon:"📞",color:"#f59e0b",bg:"#fffbeb"},
+  task:{label:"タスク",icon:"📋",color:"#8b5cf6",bg:"#f5f3ff"},
+  break_t:{label:"休憩",icon:"☕",color:"#ec4899",bg:"#fdf2f8"},
+  online:{label:"オンライン",icon:"💻",color:"#06b6d4",bg:"#ecfeff"},
+};
+
+// 案3: 山陰天気データ(シミュレーション)
+const WEATHER_DATA=(()=>{const w={};const types=["☀️","⛅","🌤️","☁️","🌧️","🌦️","⛈️"];const now=new Date();
+for(let i=-14;i<=14;i++){const d=new Date(now);d.setDate(d.getDate()+i);const k=d.toISOString().split("T")[0];
+const seed=d.getDate()*7+d.getMonth()*13;w[k]={icon:types[seed%types.length],temp:Math.round(5+seed%15),desc:["晴れ","曇り","晴れ時々曇り","曇り","雨","にわか雨","雷雨"][seed%7],humidity:40+seed%40};}return w;})();
+
+// 案6: お客様カルテ
+const CUSTOMERS=[
+  {id:"c1",name:"A社（鳥取商事）",contact:"山本部長",lastVisit:"2026-02-10",notes:"新サービス提案 → 好感触。3月に再訪予定",status:"hot"},
+  {id:"c2",name:"B社（松江テック）",contact:"木村課長",lastVisit:"2026-02-05",notes:"システム導入検討中。見積依頼あり",status:"warm"},
+  {id:"c3",name:"C社（出雲建設）",contact:"斎藤社長",lastVisit:"2026-01-28",notes:"年間契約更新の打合せ完了",status:"active"},
+  {id:"c4",name:"D社（境港水産）",contact:"中村常務",lastVisit:"2026-01-15",notes:"初回訪問。ニーズヒアリング済",status:"new"},
+];
+
+const WD=["日","月","火","水","木","金","土"];
+const fmt=d=>d.toISOString().split("T")[0];
+const fmtT=d=>d.toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit",hour12:false});
+const same=(a,b)=>fmt(a)===fmt(b);
+const isToday=d=>same(d,new Date());
+const isWknd=d=>d.getDay()===0||d.getDay()===6;
+const addD=(d,n)=>{const r=new Date(d);r.setDate(r.getDate()+n);return r;};
+const uid=()=>`e${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+const monOf=d=>{const r=new Date(d);r.setDate(r.getDate()-((r.getDay()+6)%7));r.setHours(0,0,0,0);return r;};
+const mGrid=(y,m)=>{const f=new Date(y,m,1);const o=(f.getDay()+6)%7;return Array.from({length:42},(_,i)=>new Date(y,m,i+1-o));};
+
+// ═══ DEMO EVENTS ════════════════════════════════════════
+function buildDemo(){
+  const evts=[],now=new Date();
+  const tpl=[
+    {t:"朝礼",tp:"meeting",h:9,m:0,dur:30},{t:"チーム定例MTG",tp:"meeting",h:10,m:0,dur:60},
+    {t:"A社クライアント訪問",tp:"visit",h:13,m:0,dur:90,cust:"c1"},{t:"企画ブレスト",tp:"meeting",h:11,m:0,dur:60},
+    {t:"開発スプリントレビュー",tp:"meeting",h:14,m:0,dur:60},{t:"お客様電話対応",tp:"call",h:10,m:30,dur:60,cust:"c2"},
+    {t:"B社オンラインMTG",tp:"online",h:15,m:0,dur:60,cust:"c2"},{t:"SNS投稿計画",tp:"task",h:11,m:0,dur:45},
+    {t:"ランチ休憩",tp:"break_t",h:12,m:0,dur:60},{t:"コードレビュー",tp:"task",h:16,m:0,dur:60},
+    {t:"営業報告書作成",tp:"task",h:15,m:30,dur:60},{t:"マーケ戦略会議",tp:"meeting",h:14,m:30,dur:60},
+    {t:"C社提案準備",tp:"task",h:10,m:0,dur:90,cust:"c3"},{t:"週次レポート",tp:"task",h:17,m:0,dur:30},
+    {t:"D社初回訪問",tp:"visit",h:13,m:30,dur:90,cust:"c4"},{t:"1on1面談",tp:"meeting",h:16,m:30,dur:30},
+  ];
+  for(let off=-14;off<=14;off++){
+    const d=addD(now,off);if(isWknd(d))continue;
+    const seed=d.getDate()*7+d.getMonth()*31;const cnt=5+(seed%5);const used=new Set();
+    for(let i=0;i<cnt;i++){
+      const ti=(seed*(i+1)*13+i*7)%tpl.length;if(used.has(ti))continue;used.add(ti);
+      const T=tpl[ti];const si=(seed+i*3)%STAFF.length;
+      const s=new Date(d.getFullYear(),d.getMonth(),d.getDate(),T.h,T.m);
+      const e=new Date(s.getTime()+T.dur*60000);
+      evts.push({id:uid(),title:T.t,type:T.tp,staffId:STAFF[si].id,start:s,end:e,synced:true,desc:"",customerId:T.cust||null,resourceId:null});
+    }
+  }
+  return evts;
+}
+function loadEvents(){try{const r=localStorage.getItem("sch3_events");if(!r)return buildDemo();return JSON.parse(r).map(e=>({...e,start:new Date(e.start),end:new Date(e.end)}));}catch{return buildDemo();}}
+function saveEvents(events){try{localStorage.setItem("sch3_events",JSON.stringify(events))}catch{}}
+
+// 案7: マスコット成長データ
+function loadStats(){try{return JSON.parse(localStorage.getItem("sch3_stats"))||{eventsCreated:0,voiceUsed:0,alertChecked:0,chatUsed:0}}catch{return{eventsCreated:0,voiceUsed:0,alertChecked:0,chatUsed:0}}}
+function saveStats(s){try{localStorage.setItem("sch3_stats",JSON.stringify(s))}catch{}}
+
+// ═══ MASCOTS ════════════════════════════════════════════
+const Sheep=({s=36,level=0})=>(
+  <svg width={s} height={s} viewBox="0 0 80 80" fill="none">
+    <g transform="translate(10,8)">
+      <circle cx="30" cy="42" r="22" fill={level>=3?"#FFD700":level>=2?"#C0C0C0":"#FAF0E6"}/>
+      <circle cx="16" cy="34" r="9" fill="#FFF8F0"/><circle cx="44" cy="34" r="9" fill="#FFF8F0"/>
+      <circle cx="30" cy="28" r="10" fill="#FFF8F0"/><circle cx="22" cy="24" r="7" fill="#FFF8F0"/><circle cx="38" cy="24" r="7" fill="#FFF8F0"/>
+      <circle cx="30" cy="44" r="14" fill="#FEF3C7"/>
+      <circle cx="25" cy="41" r="2.8" fill="#1E293B"/><circle cx="35" cy="41" r="2.8" fill="#1E293B"/>
+      <circle cx="26" cy="40" r="1" fill="#FFF"/><circle cx="36" cy="40" r="1" fill="#FFF"/>
+      <ellipse cx="30" cy="46" rx="2.2" ry="1.3" fill="#FDA4AF"/>
+      <path d="M27 49 Q30 52 33 49" stroke="#1E293B" strokeWidth="1.4" fill="none" strokeLinecap="round"/>
+      {level>=1&&<circle cx="30" cy="16" r="4" fill="#FFD700" stroke="#FFA500" strokeWidth="1"/>}
+      {level>=2&&<text x="30" y="18" textAnchor="middle" fontSize="5" fill="#8B4513">★</text>}
+    </g>
+  </svg>
+);
+const Dragon=({s=40,level=0})=>(
+  <svg width={s} height={s} viewBox="0 0 80 80" fill="none">
+    <g transform="translate(10,6)">
+      <ellipse cx="30" cy="46" rx="16" ry="18" fill={level>=3?"#059669":"#22C55E"}/><circle cx="30" cy="34" r="16" fill="#4ADE80"/>
+      <circle cx="23" cy="30" r="4" fill="#FFF"/><circle cx="37" cy="30" r="4" fill="#FFF"/>
+      <circle cx="24" cy="30" r="2.2" fill="#1E293B"/><circle cx="38" cy="30" r="2.2" fill="#1E293B"/>
+      <path d="M25 38 Q30 42 35 38" stroke="#1E293B" strokeWidth="1.6" fill="none" strokeLinecap="round"/>
+      <path d="M21 18 L18 8 L26 16" fill="#22C55E"/><path d="M30 16 L30 6 L35 15" fill="#22C55E"/><path d="M39 18 L42 8 L34 16" fill="#22C55E"/>
+      {level>=1&&<path d="M15 18 L10 6 L20 14" fill="#059669"/>}
+      {level>=2&&<path d="M45 18 L50 6 L40 14" fill="#059669"/>}
+      <ellipse cx="30" cy="48" rx="7" ry="10" fill="#86EFAC"/>
+    </g>
+  </svg>
+);
+const Camel=({s=36,level=0})=>(
+  <svg width={s} height={s} viewBox="0 0 80 80" fill="none">
+    <g transform="translate(10,8)">
+      <ellipse cx="30" cy="42" rx="18" ry="16" fill="#D2A679"/><ellipse cx="30" cy="30" r="12" fill="#DEB887"/>
+      <path d="M22 20 Q20 10 18 20" fill="#DEB887" stroke="#C4956A" strokeWidth="1.2"/>
+      <path d="M38 20 Q40 10 42 20" fill="#DEB887" stroke="#C4956A" strokeWidth="1.2"/>
+      <circle cx="25" cy="28" r="2.8" fill="#1E293B"/><circle cx="35" cy="28" r="2.8" fill="#1E293B"/>
+      <ellipse cx="30" cy="34" rx="4.5" ry="2.8" fill="#C4956A"/>
+      <path d="M27 37 Q30 39 33 37" stroke="#8B6914" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+      <ellipse cx="28" cy="40" rx="9" ry={5+level} fill="#C4956A"/>
+      {level>=2&&<ellipse cx="36" cy="38" rx="6" ry={3+level} fill="#C4956A"/>}
+    </g>
+  </svg>
+);
+const MascotGroup=({size=28,stats})=>{
+  const sl=Math.min(3,Math.floor((stats?.alertChecked||0)/5));
+  const dl=Math.min(3,Math.floor((stats?.voiceUsed||0)/3));
+  const cl=Math.min(3,Math.floor((stats?.chatUsed||0)/5));
+  return <div style={{display:"flex",alignItems:"flex-end",gap:0}}><Sheep s={size} level={sl}/><Dragon s={size+4} level={dl}/><Camel s={size} level={cl}/></div>;
+};
+
+// ═══ SHARED STYLES ══════════════════════════════════════
+const OVL={position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(10,14,39,.55)",backdropFilter:"blur(6px)",zIndex:80,display:"flex",alignItems:"center",justifyContent:"center",animation:"fadeIn .2s ease"};
+const MOD={background:"#fff",borderRadius:20,padding:"24px 22px",width:"94%",boxShadow:"0 25px 60px rgba(0,0,0,.28)",animation:"slideUp .3s ease",maxHeight:"92vh",overflowY:"auto"};
+const BP={padding:"10px 20px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#0066ff,#2563eb)",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer"};
+const BS={padding:"10px 16px",borderRadius:10,border:"1.5px solid #e2e8f0",background:"#fff",color:"#475569",fontSize:13,fontWeight:600,cursor:"pointer"};
+const XB={background:"#f1f5f9",border:"none",borderRadius:8,width:32,height:32,fontSize:16,cursor:"pointer",color:"#64748b",display:"flex",alignItems:"center",justifyContent:"center"};
+const LB={fontSize:12,fontWeight:700,color:"#475569",marginBottom:4,display:"block"};
+const IN={width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:14,outline:"none",background:"#fff",color:"#1a1a2e",boxSizing:"border-box"};
+const CD={background:"#fff",borderRadius:16,boxShadow:"0 1px 4px rgba(0,0,0,.06),0 0 0 1px rgba(0,0,0,.03)",overflow:"hidden"};
+
+// ═══ 案2: HEATMAP ═══════════════════════════════════════
+function StaffHeatmap({events,weekDates}){
+  return <div style={{background:"#fff",borderBottom:"1px solid #e5e7eb",padding:"6px 12px",display:"flex",gap:6,overflowX:"auto",alignItems:"center"}}>
+    <span style={{fontSize:10,color:"#94a3b8",fontWeight:700,flexShrink:0}}>負荷</span>
+    {STAFF.map(s=>{
+      const count=weekDates.reduce((sum,d)=>sum+events.filter(e=>same(e.start,d)&&e.staffId===s.id).length,0);
+      const intensity=Math.min(1,count/20);
+      const bg=`rgba(${Math.round(220*intensity)},${Math.round(50*(1-intensity))},${Math.round(50*(1-intensity))},${0.15+intensity*0.6})`;
+      return <div key={s.id} style={{display:"flex",alignItems:"center",gap:3,padding:"3px 8px",borderRadius:12,background:bg,fontSize:10,fontWeight:700,color:intensity>0.5?"#991b1b":"#374151",whiteSpace:"nowrap"}}>
+        <span>{s.avatar}</span><span>{count}件</span>
+      </div>;
+    })}
+  </div>;
+}
+
+// ═══ 案3: WEATHER BAR ═══════════════════════════════════
+function WeatherBar({date}){
+  const key=fmt(date);const w=WEATHER_DATA[key];
+  if(!w)return null;
+  return <div style={{display:"flex",alignItems:"center",gap:6,padding:"4px 10px",borderRadius:10,background:w.icon.includes("🌧")?"#fef2f2":w.icon.includes("☀")?"#fffbeb":"#f8fafc",fontSize:11}}>
+    <span style={{fontSize:16}}>{w.icon}</span>
+    <span style={{fontWeight:700,color:"#374151"}}>{w.temp}°C</span>
+    <span style={{color:"#64748b"}}>{w.desc}</span>
+    {w.icon.includes("🌧")&&<span style={{color:"#e11d48",fontWeight:700}}>☔傘必要</span>}
+  </div>;
+}
+
+// ═══ 案1: AI CHAT ═══════════════════════════════════════
+function AIChat({isOpen,onClose,events,onAddEvent,onUpdateStats}){
+  const [msgs,setMsgs]=useState([{role:"ai",text:"こんにちは！オロチです🐉 スケジュールについて何でも聞いてください！\n\n例：「来週の空き時間は？」「明日の予定を教えて」"}]);
+  const [input,setInput]=useState("");
+  const [loading,setLoading]=useState(false);
+  const endRef=useRef(null);
+  useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"})},[msgs]);
+
+  const send=async()=>{
+    if(!input.trim()||loading)return;
+    const q=input.trim();setInput("");
+    setMsgs(p=>[...p,{role:"user",text:q}]);setLoading(true);
+    onUpdateStats(s=>({...s,chatUsed:(s.chatUsed||0)+1}));
+
+    // Local intelligence
+    const now=new Date();const todayEvts=events.filter(e=>same(e.start,now)).sort((a,b)=>a.start-b.start);
+    const tomorrowEvts=events.filter(e=>same(e.start,addD(now,1))).sort((a,b)=>a.start-b.start);
+    const weekEvts=events.filter(e=>{const diff=(e.start-now)/(86400000);return diff>=0&&diff<7;});
+
+    let response="";
+    if(q.includes("今日")||q.includes("本日")){
+      response=todayEvts.length===0?"今日の予定はありません🎉 ゆっくりできますね！":`今日は${todayEvts.length}件の予定があります：\n\n${todayEvts.map(e=>`⏰ ${fmtT(e.start)} ${e.title}（${STAFF.find(s=>s.id===e.staffId)?.name}）`).join("\n")}`;
+    }else if(q.includes("明日")){
+      response=tomorrowEvts.length===0?"明日の予定はまだありません。新しい予定を追加しますか？":`明日は${tomorrowEvts.length}件：\n\n${tomorrowEvts.map(e=>`⏰ ${fmtT(e.start)} ${e.title}`).join("\n")}`;
+    }else if(q.includes("空き")||q.includes("空いて")){
+      const busy=new Set();todayEvts.forEach(e=>{for(let h=e.start.getHours();h<e.end.getHours();h++)busy.add(h)});
+      const free=[];for(let h=9;h<18;h++)if(!busy.has(h))free.push(`${h}:00`);
+      response=free.length>0?`今日の空き時間：\n\n${free.map(t=>`✅ ${t}〜`).join("\n")}\n\n予定を入れましょうか？`:"今日はかなり詰まっています💦 明日の空きを確認しましょうか？";
+    }else if(q.includes("忙しい")||q.includes("負荷")){
+      const counts=STAFF.map(s=>({...s,count:weekEvts.filter(e=>e.staffId===s.id).length})).sort((a,b)=>b.count-a.count);
+      response=`📊 今週のスタッフ稼働状況：\n\n${counts.map((s,i)=>`${i===0?"🔴":"⚪"} ${s.name}：${s.count}件`).join("\n")}\n\n${counts[0].name}さんが一番忙しいです。タスクの分散を検討しましょうか？`;
+    }else if(q.includes("天気")){
+      const w=WEATHER_DATA[fmt(now)];
+      response=w?`今日の山陰地方の天気：${w.icon} ${w.desc}（${w.temp}°C）\n湿度：${w.humidity}%\n\n${w.icon.includes("🌧")?"☔ 外出の予定がある方は傘をお忘れなく！":"お出かけ日和ですね！"}`:"天気情報を取得できませんでした";
+    }else if(q.includes("お客")||q.includes("顧客")||q.includes("カルテ")){
+      response=`📋 お客様カルテ一覧：\n\n${CUSTOMERS.map(c=>`${c.status==="hot"?"🔥":c.status==="warm"?"🟡":"⚪"} ${c.name}\n　担当：${c.contact}｜最終訪問：${c.lastVisit}\n　${c.notes}`).join("\n\n")}`;
+    }else{
+      try{
+        const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:500,
+            messages:[{role:"user",content:`あなたはスケジュール管理AIアシスタント「オロチ」です。山陰地方の中小企業向け。短く親しみやすく回答。今日:${now.toLocaleDateString("ja-JP")} 今日の予定${todayEvts.length}件。質問:${q}`}]})});
+        const data=await res.json();response=data.content?.[0]?.text||"すみません、うまく理解できませんでした💦";
+      }catch{response="AIサーバーに接続できませんでした。「今日の予定」「空き時間」「天気」「忙しい人」などを試してみてください！";}
+    }
+    setTimeout(()=>{setMsgs(p=>[...p,{role:"ai",text:response}]);setLoading(false);},500);
+  };
+
+  if(!isOpen)return null;
+  return <div style={OVL} onClick={onClose}>
+    <div style={{...MOD,maxWidth:480,display:"flex",flexDirection:"column",padding:0,height:"80vh",maxHeight:600}} onClick={e=>e.stopPropagation()}>
+      <div style={{padding:"16px 20px",background:"linear-gradient(135deg,#059669,#10b981)",borderRadius:"20px 20px 0 0",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}><Dragon s={32}/><div><div style={{fontSize:16,fontWeight:800,color:"#fff"}}>オロチ AIコンセルジュ</div><div style={{fontSize:10,color:"#d1fae5"}}>スケジュールの質問に何でもお答えします</div></div></div>
+        <button onClick={onClose} style={{...XB,background:"rgba(255,255,255,.2)",color:"#fff"}}>✕</button>
+      </div>
+      <div style={{flex:1,overflowY:"auto",padding:"12px 16px",background:"#f8fafc"}}>
+        {msgs.map((m,i)=><div key={i} style={{display:"flex",justifyContent:m.role==="user"?"flex-end":"flex-start",marginBottom:10}}>
+          {m.role==="ai"&&<div style={{width:28,height:28,borderRadius:"50%",background:"#059669",color:"#fff",fontSize:11,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginRight:6,marginTop:4}}>🐉</div>}
+          <div style={{maxWidth:"80%",padding:"10px 14px",borderRadius:m.role==="user"?"16px 16px 4px 16px":"16px 16px 16px 4px",background:m.role==="user"?"#0066ff":"#fff",color:m.role==="user"?"#fff":"#1a1a2e",fontSize:13,lineHeight:1.6,whiteSpace:"pre-wrap",boxShadow:"0 1px 3px rgba(0,0,0,.08)"}}>{m.text}</div>
+        </div>)}
+        {loading&&<div style={{display:"flex",gap:4,padding:10}}>{[0,1,2].map(i=><div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#94a3b8",animation:`typing 1s ${i*.2}s infinite`}}/>)}</div>}
+        <div ref={endRef}/>
+      </div>
+      <div style={{padding:"10px 14px",borderTop:"1px solid #e5e7eb",display:"flex",gap:8,background:"#fff",borderRadius:"0 0 20px 20px"}}>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&send()} placeholder="メッセージを入力..." style={{...IN,borderRadius:20,flex:1}}/>
+        <button onClick={send} disabled={loading} style={{...BP,borderRadius:20,padding:"10px 16px",fontSize:16,opacity:loading?.5:1}}>➤</button>
+      </div>
+    </div>
+  </div>;
+}
+
+// ═══ 案5: DASHBOARD ═════════════════════════════════════
+function Dashboard({isOpen,onClose,events,stats}){
+  if(!isOpen)return null;
+  const now=new Date();
+  const weekEvts=events.filter(e=>{const d=(e.start-now)/86400000;return d>=-7&&d<0;});
+  const byType={};weekEvts.forEach(e=>{byType[e.type]=(byType[e.type]||0)+1;});
+  const byStaff=STAFF.map(s=>({...s,count:weekEvts.filter(e=>e.staffId===s.id).length})).sort((a,b)=>b.count-a.count);
+  const totalHours=weekEvts.reduce((s,e)=>s+(e.end-e.start)/3600000,0);
+  const visitCount=weekEvts.filter(e=>e.type==="visit").length;
+
+  return <div style={OVL} onClick={onClose}>
+    <div style={{...MOD,maxWidth:520}} onClick={e=>e.stopPropagation()}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+        <div><div style={{fontSize:20,fontWeight:900,color:"#1a1a2e"}}>📊 チーム活動ダッシュボード</div><div style={{fontSize:12,color:"#64748b"}}>過去7日間のサマリー</div></div>
+        <button onClick={onClose} style={XB}>✕</button>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:18}}>
+        {[["📅",`${weekEvts.length}件`,"総予定数","#0066ff"],["⏱",`${totalHours.toFixed(1)}h`,"稼働時間","#8b5cf6"],["🏢",`${visitCount}件`,"訪問回数","#059669"],["🏆",byStaff[0]?.name||"-","MVP（最多稼働）","#d97706"]].map(([ic,val,label,col],i)=>
+          <div key={i} style={{padding:14,borderRadius:14,background:`${col}08`,border:`1px solid ${col}20`}}>
+            <div style={{fontSize:22}}>{ic}</div>
+            <div style={{fontSize:22,fontWeight:900,color:col,marginTop:4}}>{val}</div>
+            <div style={{fontSize:11,color:"#64748b",marginTop:2}}>{label}</div>
+          </div>
+        )}
+      </div>
+
+      <div style={{marginBottom:18}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#1a1a2e",marginBottom:8}}>カテゴリ別内訳</div>
+        {Object.entries(byType).sort((a,b)=>b[1]-a[1]).map(([type,count])=>{
+          const c=CATS[type]||CATS.task;const pct=Math.round(count/weekEvts.length*100);
+          return <div key={type} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+            <span style={{fontSize:14,width:24}}>{c.icon}</span>
+            <span style={{fontSize:12,fontWeight:600,width:70,color:"#374151"}}>{c.label}</span>
+            <div style={{flex:1,height:20,background:"#f1f5f9",borderRadius:10,overflow:"hidden"}}>
+              <div style={{width:`${pct}%`,height:"100%",background:c.color,borderRadius:10,transition:"width .5s"}}/>
+            </div>
+            <span style={{fontSize:12,fontWeight:700,color:"#374151",width:36}}>{count}件</span>
+          </div>;
+        })}
+      </div>
+
+      <div style={{marginBottom:14}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#1a1a2e",marginBottom:8}}>スタッフ別稼働ランキング</div>
+        {byStaff.map((s,i)=><div key={s.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+          <span style={{fontSize:14,width:24}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":`${i+1}.`}</span>
+          <div style={{width:24,height:24,borderRadius:"50%",background:s.color,color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{s.avatar}</div>
+          <span style={{fontSize:12,fontWeight:600,flex:1}}>{s.name}</span>
+          <span style={{fontSize:13,fontWeight:800,color:s.color}}>{s.count}件</span>
+        </div>)}
+      </div>
+
+      <div style={{padding:14,background:"#ecfdf5",borderRadius:12,display:"flex",alignItems:"center",gap:10}}>
+        <Camel s={32} level={2}/>
+        <div style={{fontSize:13,color:"#059669",fontWeight:600}}>今週もお疲れ様でした！チーム全体で{weekEvts.length}件のタスクを完了しました 🎉</div>
+      </div>
+    </div>
+  </div>;
+}
+
+// ═══ 案6: CUSTOMER CARD ═════════════════════════════════
+function CustomerCard({isOpen,onClose,events,customerId}){
+  if(!isOpen)return null;
+  const cust=CUSTOMERS.find(c=>c.id===customerId)||CUSTOMERS[0];
+  const custEvts=events.filter(e=>e.customerId===cust.id).sort((a,b)=>b.start-a.start);
+  const statusColors={hot:"#e11d48",warm:"#f59e0b",active:"#059669",new:"#3b82f6"};
+  const statusLabels={hot:"ホット",warm:"ウォーム",active:"契約中",new:"新規"};
+
+  return <div style={OVL} onClick={onClose}>
+    <div style={{...MOD,maxWidth:440}} onClick={e=>e.stopPropagation()}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+            <span style={{fontSize:18}}>🏢</span>
+            <span style={{fontSize:11,padding:"3px 10px",borderRadius:6,fontWeight:700,background:`${statusColors[cust.status]}15`,color:statusColors[cust.status]}}>{statusLabels[cust.status]}</span>
+          </div>
+          <div style={{fontSize:20,fontWeight:900,color:"#1a1a2e"}}>{cust.name}</div>
+          <div style={{fontSize:13,color:"#64748b",marginTop:2}}>担当：{cust.contact}</div>
+        </div>
+        <button onClick={onClose} style={XB}>✕</button>
+      </div>
+
+      <div style={{background:"#f8fafc",borderRadius:12,padding:14,marginBottom:14}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#475569",marginBottom:6}}>📝 最新メモ</div>
+        <div style={{fontSize:14,color:"#1a1a2e",lineHeight:1.6}}>{cust.notes}</div>
+      </div>
+
+      <div>
+        <div style={{fontSize:12,fontWeight:700,color:"#475569",marginBottom:8}}>📅 対応履歴（{custEvts.length}件）</div>
+        {custEvts.length===0?<div style={{color:"#94a3b8",fontSize:13,padding:12}}>対応履歴はまだありません</div>:
+        custEvts.slice(0,5).map(e=>{const c=CATS[e.type]||CATS.task;const st=STAFF.find(s=>s.id===e.staffId);
+          return <div key={e.id} style={{display:"flex",gap:10,padding:"8px 0",borderBottom:"1px solid #f1f5f9",alignItems:"center"}}>
+            <div style={{fontSize:11,color:"#64748b",fontWeight:600,width:70,flexShrink:0}}>{e.start.toLocaleDateString("ja-JP",{month:"short",day:"numeric"})}</div>
+            <span>{c.icon}</span>
+            <div style={{flex:1,fontSize:13,fontWeight:600,color:"#1a1a2e"}}>{e.title}</div>
+            <div style={{fontSize:11,color:st?.color,fontWeight:600}}>{st?.name?.split(" ")[0]}</div>
+          </div>;})}
+      </div>
+    </div>
+  </div>;
+}
+
+// ═══ 案7: MASCOT STATUS ═════════════════════════════════
+function MascotStatus({isOpen,onClose,stats}){
+  if(!isOpen)return null;
+  const sl=Math.min(3,Math.floor((stats.alertChecked||0)/5));
+  const dl=Math.min(3,Math.floor((stats.voiceUsed||0)/3));
+  const cl=Math.min(3,Math.floor((stats.chatUsed||0)/5));
+  const titles=["ノーマル","シルバー","ゴールド","プラチナ"];
+
+  return <div style={OVL} onClick={onClose}>
+    <div style={{...MOD,maxWidth:400,textAlign:"center"}} onClick={e=>e.stopPropagation()}>
+      <div style={{fontSize:18,fontWeight:900,color:"#1a1a2e",marginBottom:4}}>🌟 マスコット成長記録</div>
+      <div style={{fontSize:12,color:"#64748b",marginBottom:18}}>アプリを使うほど成長します！</div>
+
+      {[{name:"ヒツジ",comp:<Sheep s={60} level={sl}/>,level:sl,stat:`アラート確認 ${stats.alertChecked||0}回`,next:sl<3?`次のレベルまであと${(sl+1)*5-(stats.alertChecked||0)}回`:"最大レベル！"},
+        {name:"オロチ",comp:<Dragon s={64} level={dl}/>,level:dl,stat:`音声入力 ${stats.voiceUsed||0}回`,next:dl<3?`次のレベルまであと${(dl+1)*3-(stats.voiceUsed||0)}回`:"最大レベル！"},
+        {name:"ラクダ",comp:<Camel s={60} level={cl}/>,level:cl,stat:`チャット ${stats.chatUsed||0}回`,next:cl<3?`次のレベルまであと${(cl+1)*5-(stats.chatUsed||0)}回`:"最大レベル！"},
+      ].map((m,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:12,background:"#f8fafc",borderRadius:12,marginBottom:8}}>
+        <div>{m.comp}</div>
+        <div style={{textAlign:"left",flex:1}}>
+          <div style={{fontSize:14,fontWeight:800,color:"#1a1a2e"}}>{m.name} <span style={{fontSize:11,color:m.level>=3?"#d97706":m.level>=2?"#8b5cf6":"#64748b"}}>Lv.{m.level} {titles[m.level]}</span></div>
+          <div style={{fontSize:11,color:"#64748b",marginTop:2}}>{m.stat}</div>
+          <div style={{fontSize:10,color:"#0066ff",marginTop:1}}>{m.next}</div>
+          <div style={{display:"flex",gap:2,marginTop:4}}>{[0,1,2,3].map(j=><div key={j} style={{width:20,height:4,borderRadius:2,background:j<=m.level?"#f59e0b":"#e2e8f0"}}/>)}</div>
+        </div>
+      </div>)}
+
+      <div style={{fontSize:12,color:"#94a3b8",marginTop:8}}>総予定作成数：{stats.eventsCreated||0}件</div>
+      <button onClick={onClose} style={{...BP,marginTop:14,width:"100%",borderRadius:12}}>閉じる</button>
+    </div>
+  </div>;
+}
+
+// ═══ 案10: AI OPTIMIZATION ══════════════════════════════
+function AIOptimization({isOpen,onClose,events}){
+  if(!isOpen)return null;
+  const now=new Date();
+  const weekEvts=events.filter(e=>{const d=(e.start-now)/86400000;return d>=0&&d<7&&!isWknd(e.start);}).sort((a,b)=>a.start-b.start);
+
+  // 分析ロジック
+  const suggestions=[];
+
+  // 訪問の最適化
+  const visits=weekEvts.filter(e=>e.type==="visit");
+  const visitDays={};visits.forEach(v=>{const k=fmt(v.start);if(!visitDays[k])visitDays[k]=[];visitDays[k].push(v);});
+  Object.entries(visitDays).forEach(([day,vs])=>{
+    if(vs.length>=2){
+      const gap=Math.abs(vs[1].start-vs[0].end)/3600000;
+      if(gap>2)suggestions.push({icon:"🚗",type:"移動最適化",text:`${new Date(day).toLocaleDateString("ja-JP",{weekday:"short",month:"short",day:"numeric"})}に訪問が${vs.length}件ありますが、間に${gap.toFixed(0)}時間の空きがあります。連続にすれば移動時間を削減できます。`,priority:"high"});
+    }
+  });
+
+  // 会議集中日の検出
+  const meetingDays={};weekEvts.filter(e=>e.type==="meeting"||e.type==="online").forEach(e=>{const k=fmt(e.start);meetingDays[k]=(meetingDays[k]||0)+1;});
+  Object.entries(meetingDays).forEach(([day,cnt])=>{
+    if(cnt>=4)suggestions.push({icon:"📅",type:"会議分散",text:`${new Date(day).toLocaleDateString("ja-JP",{weekday:"short",month:"short",day:"numeric"})}に会議が${cnt}件集中しています。一部を別の日に移動して集中作業時間を確保しませんか？`,priority:"medium"});
+  });
+
+  // スタッフ負荷の偏り
+  const staffLoad=STAFF.map(s=>({...s,count:weekEvts.filter(e=>e.staffId===s.id).length}));
+  const maxLoad=Math.max(...staffLoad.map(s=>s.count));
+  const minLoad=Math.min(...staffLoad.map(s=>s.count));
+  if(maxLoad-minLoad>=5){
+    const busiest=staffLoad.find(s=>s.count===maxLoad);
+    const lightest=staffLoad.find(s=>s.count===minLoad);
+    suggestions.push({icon:"⚖️",type:"負荷分散",text:`${busiest.name}さん(${maxLoad}件)と${lightest.name}さん(${minLoad}件)で負荷に差があります。タスクの振り分けを見直しましょう。`,priority:"high"});
+  }
+
+  // 空き時間の提案
+  const allBusy=new Set();weekEvts.forEach(e=>{const k=fmt(e.start)+"-"+e.start.getHours();allBusy.add(k);});
+  const freeSlots=[];
+  for(let d=0;d<5;d++){
+    const date=addD(now,d);if(isWknd(date))continue;
+    let consecutive=0;
+    for(let h=9;h<18;h++){if(!allBusy.has(fmt(date)+"-"+h))consecutive++;else{if(consecutive>=3)freeSlots.push({date,hours:consecutive});consecutive=0;}}
+    if(consecutive>=3)freeSlots.push({date,hours:consecutive});
+  }
+  if(freeSlots.length>0){
+    const best=freeSlots.sort((a,b)=>b.hours-a.hours)[0];
+    suggestions.push({icon:"💡",type:"集中タイム提案",text:`${best.date.toLocaleDateString("ja-JP",{weekday:"short",month:"short",day:"numeric"})}に${best.hours}時間の空きブロックがあります。集中作業やチーム定例に最適です！`,priority:"low"});
+  }
+
+  if(suggestions.length===0)suggestions.push({icon:"✅",type:"最適化済み",text:"今週のスケジュールはバランスが取れています！このまま進めましょう。",priority:"none"});
+
+  const priColors={high:"#e11d48",medium:"#f59e0b",low:"#0066ff",none:"#059669"};
+  const priLabels={high:"重要",medium:"推奨",low:"提案",none:"良好"};
+
+  return <div style={OVL} onClick={onClose}>
+    <div style={{...MOD,maxWidth:480}} onClick={e=>e.stopPropagation()}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18}}>
+        <Dragon s={36} level={2}/>
+        <div><div style={{fontSize:18,fontWeight:900,color:"#1a1a2e"}}>🧠 AI最適化提案</div><div style={{fontSize:12,color:"#64748b"}}>オロチが今週のスケジュールを分析しました</div></div>
+        <button onClick={onClose} style={{...XB,marginLeft:"auto"}}>✕</button>
+      </div>
+
+      {suggestions.map((s,i)=><div key={i} style={{padding:14,background:"#f8fafc",borderRadius:12,marginBottom:10,borderLeft:`4px solid ${priColors[s.priority]}`}}>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+          <span style={{fontSize:18}}>{s.icon}</span>
+          <span style={{fontSize:13,fontWeight:800,color:"#1a1a2e"}}>{s.type}</span>
+          <span style={{fontSize:10,padding:"2px 8px",borderRadius:6,fontWeight:700,background:`${priColors[s.priority]}15`,color:priColors[s.priority],marginLeft:"auto"}}>{priLabels[s.priority]}</span>
+        </div>
+        <div style={{fontSize:13,color:"#475569",lineHeight:1.6}}>{s.text}</div>
+      </div>)}
+    </div>
+  </div>;
+}
+
+// ═══ 案9: LINE SHARE ════════════════════════════════════
+function LineShare({event}){
+  if(!event)return null;
+  const st=STAFF.find(s=>s.id===event.staffId);
+  const text=`📅 ${event.title}\n⏰ ${fmtT(event.start)}-${fmtT(event.end)}\n👤 ${st?.name||"未定"}\n#スケジュールくん`;
+  const url=`https://line.me/R/share?text=${encodeURIComponent(text)}`;
+  return <button onClick={()=>window.open(url,"_blank")} style={{...BS,fontSize:12,padding:"6px 12px",display:"flex",alignItems:"center",gap:4}}>
+    <span style={{color:"#06C755",fontWeight:900}}>LINE</span>共有
+  </button>;
+}
+
+// ═══ MORNING ALERT ══════════════════════════════════════
+function MorningAlert({events,onClose,stats,weather}){
+  const now=new Date();const te=events.filter(e=>same(e.start,now)).sort((a,b)=>a.start-b.start);
+  const w=WEATHER_DATA[fmt(now)];
+  return <div style={OVL} onClick={onClose}><div style={{...MOD,maxWidth:440,borderTop:"4px solid #f59e0b"}} onClick={e=>e.stopPropagation()}>
+    <div style={{textAlign:"center",marginBottom:18}}>
+      <div style={{display:"flex",justifyContent:"center",marginBottom:8}}><MascotGroup size={32} stats={stats}/></div>
+      <div style={{fontSize:12,color:"#f59e0b",fontWeight:700,letterSpacing:3}}>MORNING BRIEF</div>
+      <div style={{fontSize:24,fontWeight:900,color:"#1a1a2e"}}>おはようございます!</div>
+      <div style={{fontSize:13,color:"#64748b",marginTop:2}}>{now.toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric",weekday:"long"})}</div>
+      {w&&<div style={{marginTop:8,display:"inline-flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:20,background:w.icon.includes("🌧")?"#fef2f2":"#fffbeb",fontSize:13}}>
+        <span style={{fontSize:18}}>{w.icon}</span><span style={{fontWeight:700}}>{w.temp}°C {w.desc}</span>
+        {w.icon.includes("🌧")&&<span style={{color:"#e11d48",fontWeight:700}}>☔</span>}
+      </div>}
+    </div>
+    <div style={{background:"#f8fafc",borderRadius:14,padding:16,marginBottom:16}}>
+      <div style={{fontSize:14,fontWeight:700}}>本日 <span style={{color:"#0066ff",fontSize:28,fontWeight:900}}>{te.length}</span> 件</div>
+    </div>
+    <div style={{maxHeight:240,overflowY:"auto",marginBottom:16}}>
+      {te.map(ev=>{const c=CATS[ev.type]||CATS.task;const st=STAFF.find(s=>s.id===ev.staffId);
+        return <div key={ev.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #f1f5f9"}}>
+          <div style={{width:44,fontSize:13,fontWeight:800,color:"#1a1a2e",textAlign:"center"}}>{fmtT(ev.start)}</div>
+          <div style={{width:3,height:34,borderRadius:2,background:st?.color||"#94a3b8"}}/>
+          <div style={{flex:1}}><div style={{fontSize:13,fontWeight:700}}>{c.icon} {ev.title}</div><div style={{fontSize:11,color:"#64748b"}}>{st?.name}</div></div>
+        </div>;})}
+    </div>
+    <button onClick={onClose} style={{...BP,width:"100%",padding:14,borderRadius:12}}>カレンダーを開く</button>
+  </div></div>;
+}
+
+// ═══ EVENT DETAIL ═══════════════════════════════════════
+function EventDetail({event:ev,onClose,onDelete,onEdit,onOpenCustomer}){
+  if(!ev)return null;
+  const c=CATS[ev.type]||CATS.task;const st=STAFF.find(s=>s.id===ev.staffId);
+  const dur=Math.round((ev.end-ev.start)/60000);const cust=CUSTOMERS.find(cu=>cu.id===ev.customerId);
+  return <div style={OVL} onClick={onClose}><div style={{...MOD,maxWidth:420,borderTop:`4px solid ${c.color}`}} onClick={e=>e.stopPropagation()}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
+      <div>
+        <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,flexWrap:"wrap"}}>
+          <span style={{fontSize:22}}>{c.icon}</span>
+          <span style={{fontSize:11,padding:"3px 10px",borderRadius:6,fontWeight:700,background:c.bg,color:c.color}}>{c.label}</span>
+          {ev.synced&&<span style={{fontSize:10,padding:"3px 8px",borderRadius:6,background:"#ecfdf5",color:"#059669",fontWeight:600}}>✓同期済</span>}
+        </div>
+        <div style={{fontSize:20,fontWeight:900,color:"#1a1a2e"}}>{ev.title}</div>
+      </div>
+      <button onClick={onClose} style={XB}>✕</button>
+    </div>
+    <div style={{background:"#f8fafc",borderRadius:12,padding:14,marginBottom:14,display:"grid",gap:12}}>
+      <div style={{display:"flex",gap:8}}><span>📅</span><div><div style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>日時</div><div style={{fontSize:13,fontWeight:600}}>{ev.start.toLocaleDateString("ja-JP",{month:"long",day:"numeric",weekday:"short"})} {fmtT(ev.start)}-{fmtT(ev.end)}（{dur}分）</div></div></div>
+      <div style={{display:"flex",gap:8,alignItems:"center"}}><span>👤</span><div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:22,height:22,borderRadius:"50%",background:st?.color,color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{st?.avatar}</div><span style={{fontSize:13,fontWeight:600}}>{st?.name}</span></div></div>
+      {cust&&<div style={{display:"flex",gap:8,cursor:"pointer"}} onClick={()=>{onOpenCustomer(cust.id);onClose()}}><span>🏢</span><div><div style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>お客様</div><div style={{fontSize:13,fontWeight:600,color:"#0066ff",textDecoration:"underline"}}>{cust.name}</div></div></div>}
+      <WeatherBar date={ev.start}/>
+    </div>
+    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+      <button onClick={()=>{onEdit(ev);onClose()}} style={{...BS,flex:1}}>✏️編集</button>
+      <LineShare event={ev}/>
+      <button onClick={()=>{const url=`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(ev.title)}&dates=${ev.start.toISOString().replace(/[-:]/g,"").split(".")[0]}Z/${ev.end.toISOString().replace(/[-:]/g,"").split(".")[0]}Z`;window.open(url,"_blank")}} style={{...BS,fontSize:12}}>📅Google</button>
+      <button onClick={()=>{onDelete(ev.id);onClose()}} style={{padding:"8px 12px",borderRadius:10,border:"none",cursor:"pointer",background:"#FEE2E2",color:"#DC2626",fontWeight:700,fontSize:12}}>🗑️</button>
+    </div>
+  </div></div>;
+}
+
+// ═══ EVENT FORM ═════════════════════════════════════════
+function EventForm({isOpen,onClose,onSave,editEvent:ed,defaultDate:dd,defaultStaff:ds}){
+  const [title,setTitle]=useState("");const [date,setDate]=useState("");
+  const [st,setSt]=useState("09:00");const [et,setEt]=useState("10:00");
+  const [sid,setSid]=useState("s1");const [type,setType]=useState("meeting");
+  const [desc,setDesc]=useState("");const [custId,setCustId]=useState("");
+  const [resId,setResId]=useState("");
+
+  useEffect(()=>{if(!isOpen)return;
+    if(ed){setTitle(ed.title);setDate(fmt(ed.start));setSt(fmtT(ed.start));setEt(fmtT(ed.end));setSid(ed.staffId);setType(ed.type);setDesc(ed.desc||"");setCustId(ed.customerId||"");setResId(ed.resourceId||"");}
+    else{setTitle("");setDate(dd||fmt(new Date()));setSt("09:00");setEt("10:00");setSid(ds||"s1");setType("meeting");setDesc("");setCustId("");setResId("");}
+  },[isOpen,ed,dd,ds]);
+
+  if(!isOpen)return null;
+  const save=()=>{if(!title.trim())return;
+    const [y,mo,d]=date.split("-").map(Number);const [sh,sm]=st.split(":").map(Number);const [eh,em]=et.split(":").map(Number);
+    onSave({id:ed?ed.id:uid(),title:title.trim(),type,staffId:sid,desc,customerId:custId||null,resourceId:resId||null,start:new Date(y,mo-1,d,sh,sm),end:new Date(y,mo-1,d,eh,em),synced:false});onClose();};
+
+  return <div style={OVL} onClick={onClose}><div style={{...MOD,maxWidth:460}} onClick={e=>e.stopPropagation()}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+      <div style={{fontSize:19,fontWeight:900}}>{ed?"予定を編集":"新規予定を作成"}</div><button onClick={onClose} style={XB}>✕</button>
+    </div>
+    <div style={{display:"grid",gap:12}}>
+      <div><label style={LB}>タイトル *</label><input value={title} onChange={e=>setTitle(e.target.value)} placeholder="例: チーム定例MTG" style={IN}/></div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        <div><label style={LB}>日付</label><input type="date" value={date} onChange={e=>setDate(e.target.value)} style={IN}/></div>
+        <div><label style={LB}>担当者</label><select value={sid} onChange={e=>setSid(e.target.value)} style={IN}>{STAFF.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        <div><label style={LB}>開始</label><input type="time" value={st} onChange={e=>setSt(e.target.value)} style={IN}/></div>
+        <div><label style={LB}>終了</label><input type="time" value={et} onChange={e=>setEt(e.target.value)} style={IN}/></div>
+      </div>
+      <div><label style={LB}>カテゴリ</label><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+        {Object.entries(CATS).map(([k,v])=><button key={k} onClick={()=>setType(k)} style={{padding:"5px 10px",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",border:type===k?`2px solid ${v.color}`:"1.5px solid #e2e8f0",background:type===k?v.bg:"#fff",color:type===k?v.color:"#64748b"}}>{v.icon}{v.label}</button>)}
+      </div></div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+        <div><label style={LB}>🏢 お客様</label><select value={custId} onChange={e=>setCustId(e.target.value)} style={IN}><option value="">なし</option>{CUSTOMERS.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
+        <div><label style={LB}>🏠 リソース予約</label><select value={resId} onChange={e=>setResId(e.target.value)} style={IN}><option value="">なし</option>{RESOURCES.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></div>
+      </div>
+      <div><label style={LB}>メモ</label><textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={2} placeholder="補足事項..." style={{...IN,resize:"vertical",fontFamily:"inherit"}}/></div>
+    </div>
+    <button onClick={save} disabled={!title.trim()} style={{...BP,width:"100%",marginTop:16,padding:14,borderRadius:12,opacity:title.trim()?1:.4}}>{ed?"変更を保存":"予定を作成"}</button>
+  </div></div>;
+}
+
+// ═══ VOICE INPUT ════════════════════════════════════════
+function VoiceInput({isOpen,onClose,onCreated,onUpdateStats}){
+  const [phase,setPhase]=useState("idle");const [txt,setTxt]=useState("");const [parsed,setParsed]=useState(null);const [err,setErr]=useState("");const rec=useRef(null);
+  const reset=()=>{setPhase("idle");setTxt("");setParsed(null);setErr("");};
+  useEffect(()=>{if(!isOpen){if(rec.current)try{rec.current.stop()}catch{};rec.current=null;reset();}},[isOpen]);
+
+  const startR=()=>{setErr("");setTxt("");try{
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){setErr("音声認識非対応。Chrome推奨");return;}
+    const r=new SR();r.lang="ja-JP";r.interimResults=true;try{r.continuous=true}catch{}
+    r.onresult=e=>{let t="";for(let i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;setTxt(t)};
+    r.onerror=e=>{if(e.error==="not-allowed")setErr("マイクを許可してください");else if(e.error!=="aborted")setErr(`エラー: ${e.error}`)};
+    r.onend=()=>setPhase(p=>{if(p==="listening"&&rec.current){try{rec.current.start();return"listening"}catch{return"transcribed"}}return p});
+    r.start();rec.current=r;setPhase("listening");onUpdateStats(s=>({...s,voiceUsed:(s.voiceUsed||0)+1}));
+  }catch{setErr("音声認識を開始できません")}};
+
+  const stopR=()=>{if(rec.current){try{rec.current.stop()}catch{};rec.current=null}setPhase(txt?"transcribed":"idle")};
+
+  const parseAI=async()=>{if(!txt.trim())return;setPhase("parsing");
+    try{const now=new Date();
+      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:`スケジュール解析AI。JSONのみ返答。現在:${now.toISOString()} JST。スタッフ:${STAFF.map(s=>`${s.name}(${s.id})`).join(",")}。入力:「${txt}」。JSON:{"title":"","date":"YYYY-MM-DD","startTime":"HH:MM","endTime":"HH:MM","staffId":"s1","type":"meeting|visit|call|task|break_t|online","description":""}`}]})});
+      const data=await res.json();setParsed(JSON.parse((data.content?.[0]?.text||"").replace(/```json|```/g,"").trim()));setPhase("parsed");
+    }catch{fallback()}};
+
+  const fallback=()=>{const now=new Date();let title="新規予定",type="meeting";
+    if(txt.includes("会議"))title="チーム会議";else if(txt.includes("訪問")){title="訪問";type="visit";}else if(txt.includes("電話")){title="電話";type="call";}else title=txt.slice(0,20)||"新規予定";
+    const tm=txt.match(/(\d{1,2})[時じ:：]/);const h=tm?parseInt(tm[1]):10;const d=txt.includes("明日")?addD(now,1):now;
+    let si="s1";for(const s of STAFF)if(txt.includes(s.name.split(" ")[0])){si=s.id;break;}
+    setParsed({title,date:fmt(d),startTime:`${String(h).padStart(2,"0")}:00`,endTime:`${String(h+1).padStart(2,"0")}:00`,staffId:si,type,description:`音声: ${txt}`});setPhase("parsed");};
+
+  const confirmEv=()=>{if(!parsed)return;const [y,mo,d]=parsed.date.split("-").map(Number);const [sh,sm]=parsed.startTime.split(":").map(Number);const [eh,em]=parsed.endTime.split(":").map(Number);
+    onCreated({id:uid(),title:parsed.title,type:parsed.type||"meeting",staffId:parsed.staffId||"s1",desc:parsed.description||"",customerId:null,resourceId:null,start:new Date(y,mo-1,d,sh,sm),end:new Date(y,mo-1,d,eh,em),synced:false});onClose();};
+
+  if(!isOpen)return null;
+  return <div style={OVL} onClick={onClose}><div style={{...MOD,maxWidth:460}} onClick={e=>e.stopPropagation()}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+      <div style={{display:"flex",alignItems:"center",gap:8}}><Dragon s={34}/><div><div style={{fontSize:17,fontWeight:900}}>音声スケジュール入力</div><div style={{fontSize:11,color:"#94a3b8"}}>AIが自然な言葉から予定を自動作成</div></div></div>
+      <button onClick={onClose} style={XB}>✕</button>
+    </div>
+    <div style={{textAlign:"center",padding:"16px 0"}}>
+      {phase==="idle"&&<><button onClick={startR} onTouchEnd={e=>{e.preventDefault();startR()}} style={{width:88,height:88,borderRadius:"50%",border:"none",cursor:"pointer",background:"linear-gradient(135deg,#0066ff,#3b82f6)",color:"#fff",fontSize:34,boxShadow:"0 8px 30px rgba(0,102,255,.35)",WebkitTapHighlightColor:"transparent"}}>🎤</button><div style={{marginTop:10,fontSize:13,color:"#64748b"}}>タップで録音開始</div></>}
+      {phase==="listening"&&<><button onClick={stopR} onTouchEnd={e=>{e.preventDefault();stopR()}} style={{width:88,height:88,borderRadius:"50%",border:"none",cursor:"pointer",background:"linear-gradient(135deg,#e11d48,#f43f5e)",color:"#fff",fontSize:34,animation:"pulseRing 1.5s infinite",WebkitTapHighlightColor:"transparent"}}>⏹</button><div style={{marginTop:10,fontSize:13,color:"#e11d48",fontWeight:700}}>🔴 録音中...</div>{txt&&<div style={{marginTop:12,padding:"10px 14px",borderRadius:12,background:"#f8fafc",border:"1px dashed #cbd5e1",fontSize:14,color:"#475569"}}>「{txt}」</div>}</>}
+    </div>
+    {(phase==="transcribed"||phase==="parsing")&&<div style={{background:"#f8fafc",borderRadius:12,padding:14,marginBottom:10,border:"1px solid #e2e8f0"}}>
+      <div style={{fontSize:15,color:"#1a1a2e",fontWeight:500,marginBottom:10}}>「{txt}」</div>
+      <div style={{display:"flex",gap:8}}><button onClick={parseAI} disabled={phase==="parsing"} style={{...BP,flex:1,background:phase==="parsing"?"#94a3b8":"linear-gradient(135deg,#8b5cf6,#a855f7)"}}>{phase==="parsing"?"解析中...":"✨ AIで自動作成"}</button><button onClick={reset} style={BS}>🔄</button></div>
+    </div>}
+    {phase==="parsed"&&parsed&&<div style={{background:"#ecfdf5",borderRadius:12,padding:14,border:"2px solid #22c55e",marginBottom:8}}>
+      <div style={{fontSize:14,fontWeight:800,color:"#059669",marginBottom:10}}>✅ 解析完了</div>
+      {[["タイトル",parsed.title],["日時",`${parsed.date} ${parsed.startTime}-${parsed.endTime}`],["担当",STAFF.find(s=>s.id===parsed.staffId)?.name||"未指定"],["種類",`${CATS[parsed.type]?.icon||""} ${CATS[parsed.type]?.label||parsed.type}`]].map(([k,v])=><div key={k} style={{display:"flex",gap:8,fontSize:13,marginBottom:4}}><span style={{color:"#64748b",minWidth:52,fontWeight:700}}>{k}</span><span style={{fontWeight:600}}>{v}</span></div>)}
+      <div style={{display:"flex",gap:8,marginTop:12}}><button onClick={confirmEv} style={{...BP,flex:1,background:"linear-gradient(135deg,#059669,#10b981)",borderRadius:10}}>✅ 登録</button><button onClick={reset} style={BS}>やり直す</button></div>
+    </div>}
+    {err&&<div style={{padding:"8px 12px",borderRadius:10,background:"#FEF2F2",color:"#DC2626",fontSize:13,marginTop:6}}>{err}</div>}
+    {phase==="idle"&&<div style={{padding:"10px 12px",background:"#f8fafc",borderRadius:10,marginTop:6}}>
+      <div style={{fontSize:11,color:"#94a3b8",fontWeight:700,marginBottom:6}}>💡 タップで入力例を使用</div>
+      {["明日10時からチーム会議","佐藤さんとA社訪問を14時に","今日16時からコードレビュー1時間"].map(ex=><div key={ex} onClick={()=>{setTxt(ex);setPhase("transcribed")}} style={{fontSize:12,color:"#0066ff",padding:"4px 0",cursor:"pointer",borderBottom:"1px solid #f1f5f9"}}>「{ex}」</div>)}
+    </div>}
+  </div></div>;
+}
+
+// ═══ EVENT BLOCK (案4: Drag&Drop) ═══════════════════════
+function EvBlock({ev,compact,onClick,onDragStart}){
+  const c=CATS[ev.type]||CATS.task;const [h,setH]=useState(false);
+  return <div draggable onDragStart={e=>{e.dataTransfer.setData("text/plain",ev.id);if(onDragStart)onDragStart(ev)}}
+    onClick={()=>onClick(ev)} onMouseEnter={()=>setH(true)} onMouseLeave={()=>setH(false)}
+    style={{background:h?c.bg:`${c.bg}dd`,borderLeft:`3px solid ${c.color}`,borderRadius:6,padding:compact?"3px 5px":"5px 8px",marginBottom:2,cursor:"grab",transform:h?"translateX(2px)":"none",transition:"all .15s",overflow:"hidden"}}>
+    <div style={{fontSize:compact?10:11,fontWeight:700,color:"#1a1a2e",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",lineHeight:1.3}}>{c.icon} {ev.title}</div>
+    {!compact&&<div style={{fontSize:10,color:"#64748b",marginTop:1}}>{fmtT(ev.start)}-{fmtT(ev.end)}</div>}
+  </div>;
+}
+
+function Chip({active,onClick,color,label}){
+  return <button onClick={onClick} style={{padding:"4px 12px",borderRadius:20,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:4,border:active?`2px solid ${color}`:"1.5px solid #e2e8f0",background:active?`${color}15`:"#fff",color:active?color:"#64748b"}}>
+    <div style={{width:7,height:7,borderRadius:"50%",background:color,opacity:active?1:.4}}/>{label}
+  </button>;
+}
+
+// ═══ MAIN APP ═══════════════════════════════════════════
+function App(){
+  const [events,setEvents]=useState(()=>loadEvents());
+  const [stats,setStats]=useState(()=>loadStats());
+  const [cur,setCur]=useState(new Date());
+  const [view,setView]=useState("week");
+  const [selStaff,setSelStaff]=useState(null);
+  const [selEv,setSelEv]=useState(null);
+  const [showForm,setShowForm]=useState(false);
+  const [editEv,setEditEv]=useState(null);
+  const [showVoice,setShowVoice]=useState(false);
+  const [showAlert,setShowAlert]=useState(false);
+  const [showChat,setShowChat]=useState(false);
+  const [showDash,setShowDash]=useState(false);
+  const [showMascot,setShowMascot]=useState(false);
+  const [showOptimize,setShowOptimize]=useState(false);
+  const [showCustomer,setShowCustomer]=useState(null);
+  const [showResources,setShowResources]=useState(false);
+  const [sync,setSync]=useState("synced");
+  const [toast,setToast]=useState(null);
+  const [formDef,setFormDef]=useState({});
+  const [activeTab,setActiveTab]=useState("calendar"); // calendar, dashboard
+
+  useEffect(()=>{saveEvents(events)},[events]);
+  useEffect(()=>{saveStats(stats)},[stats]);
+
+  const notify=(m,t="success")=>{setToast({m,t});setTimeout(()=>setToast(null),3000)};
+  const doSync=()=>{setSync("syncing");setTimeout(()=>{setSync("synced");setEvents(p=>p.map(e=>({...e,synced:true})));notify("📅 Google同期完了","info")},1500)};
+  const updateStats=fn=>{setStats(p=>{const n=fn(p);saveStats(n);return n;})};
+
+  const addEv=ev=>{setEvents(p=>[...p,ev]);updateStats(s=>({...s,eventsCreated:(s.eventsCreated||0)+1}));notify("✅ 予定を登録");doSync()};
+  const updEv=ev=>{setEvents(p=>p.map(e=>e.id===ev.id?{...ev,synced:false}:e));notify("✏️ 予定を更新");doSync()};
+  const delEv=id=>{setEvents(p=>p.filter(e=>e.id!==id));notify("🗑️ 削除しました","warning")};
+  const saveEv=ev=>{if(editEv)updEv(ev);else addEv(ev);setEditEv(null)};
+  const openNew=(d,si)=>{setEditEv(null);setFormDef({date:d?fmt(d):fmt(cur),staff:si||"s1"});setShowForm(true)};
+  const openEdit=ev=>{setEditEv(ev);setShowForm(true)};
+  const nav=dir=>{const d=new Date(cur);d.setDate(d.getDate()+dir*(view==="month"?30:view==="week"?7:1));setCur(d)};
+
+  // 案4: Drop handler
+  const handleDrop=(date,staffId,e)=>{
+    e.preventDefault();e.currentTarget.classList.remove("drag-over");
+    const evId=e.dataTransfer.getData("text/plain");if(!evId)return;
+    setEvents(prev=>prev.map(ev=>{
+      if(ev.id!==evId)return ev;
+      const dur=ev.end-ev.start;const newStart=new Date(date.getFullYear(),date.getMonth(),date.getDate(),ev.start.getHours(),ev.start.getMinutes());
+      return{...ev,staffId:staffId||ev.staffId,start:newStart,end:new Date(newStart.getTime()+dur),synced:false};
+    }));notify("📌 予定を移動しました","info");doSync();
+  };
+  const handleDragOver=e=>{e.preventDefault();e.currentTarget.classList.add("drag-over")};
+  const handleDragLeave=e=>e.currentTarget.classList.remove("drag-over");
+
+  const vs=selStaff?STAFF.filter(s=>s.id===selStaff):showResources?[...STAFF,...RESOURCES]:STAFF;
+  const wd=useMemo(()=>{const m=monOf(cur);return Array.from({length:7},(_,i)=>addD(m,i))},[cur]);
+  const md=useMemo(()=>mGrid(cur.getFullYear(),cur.getMonth()),[cur]);
+  const eDS=(d,sid)=>events.filter(e=>same(e.start,d)&&e.staffId===sid).sort((a,b)=>a.start-b.start);
+  const eD=d=>events.filter(e=>same(e.start,d)).sort((a,b)=>a.start-b.start);
+
+  useEffect(()=>{const h=new Date().getHours();if(h>=7&&h<=10){setShowAlert(true);updateStats(s=>({...s,alertChecked:(s.alertChecked||0)+1}))}},[]);
+
+  const hTitle=useMemo(()=>{
+    if(view==="month")return cur.toLocaleDateString("ja-JP",{year:"numeric",month:"long"});
+    if(view==="day")return cur.toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric",weekday:"long"});
+    const m=wd[0],s=wd[6];return m.getMonth()===s.getMonth()?`${m.toLocaleDateString("ja-JP",{year:"numeric",month:"long"})} ${m.getDate()}日-${s.getDate()}日`:`${m.getMonth()+1}/${m.getDate()}-${s.getMonth()+1}/${s.getDate()}`;
+  },[cur,view,wd]);
+
+  const tCnt=events.filter(e=>same(e.start,new Date())).length;
+
+  return <div>
+    {/* HEADER */}
+    <header style={{background:"linear-gradient(135deg,#0a0e27 0%,#141937 60%,#1a1f3d 100%)",padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",boxShadow:"0 2px 16px rgba(0,0,0,.2)"}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setShowMascot(true)}>
+        <MascotGroup size={20} stats={stats}/>
+        <div><div style={{fontSize:14,fontWeight:900,color:"#fff",lineHeight:1.2}}>AIさんいんコンセルジュ</div><div style={{fontSize:9,color:"#8b93b0",fontWeight:600,letterSpacing:2}}>スケジュールくん v3</div></div>
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:4}}>
+        <div style={{display:"flex",alignItems:"center",gap:3,padding:"3px 8px",borderRadius:16,background:sync==="synced"?"rgba(5,150,105,.15)":"rgba(249,115,22,.15)"}}>
+          <div style={{width:6,height:6,borderRadius:"50%",background:sync==="synced"?"#10b981":"#f97316",animation:sync==="syncing"?"pulseRing 1.2s infinite":"none"}}/>
+          <span style={{fontSize:9,color:sync==="synced"?"#6ee7b7":"#fdba74",fontWeight:600}}>{sync==="synced"?"同期済":"同期中"}</span>
+        </div>
+        <button onClick={()=>setShowDash(true)} title="ダッシュボード" style={{background:"rgba(255,255,255,.08)",border:"none",borderRadius:8,padding:"5px 8px",cursor:"pointer",color:"#fff",fontSize:13}}>📊</button>
+        <button onClick={()=>setShowOptimize(true)} title="AI最適化" style={{background:"rgba(255,255,255,.08)",border:"none",borderRadius:8,padding:"5px 8px",cursor:"pointer",color:"#fff",fontSize:13}}>🧠</button>
+        <button onClick={()=>{setShowAlert(true);updateStats(s=>({...s,alertChecked:(s.alertChecked||0)+1}))}} style={{background:"rgba(255,255,255,.08)",border:"none",borderRadius:8,padding:"5px 8px",cursor:"pointer",color:"#fff",fontSize:13,position:"relative"}}>
+          🔔{tCnt>0&&<span style={{position:"absolute",top:-2,right:-2,width:14,height:14,borderRadius:"50%",background:"#e11d48",color:"#fff",fontSize:8,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>{tCnt}</span>}
+        </button>
+      </div>
+    </header>
+
+    {/* TOOLBAR */}
+    <div style={{background:"#fff",borderBottom:"1px solid #e5e7eb",padding:"6px 10px",display:"flex",flexWrap:"wrap",gap:6,alignItems:"center",justifyContent:"space-between"}}>
+      <div style={{display:"flex",alignItems:"center",gap:4}}>
+        <button onClick={()=>nav(-1)} style={{background:"#f1f5f9",border:"none",borderRadius:8,padding:"4px 8px",cursor:"pointer",fontSize:13,fontWeight:700,color:"#374151"}}>◀</button>
+        <button onClick={()=>setCur(new Date())} style={{background:"#0066ff",border:"none",borderRadius:8,padding:"4px 10px",cursor:"pointer",fontSize:10,fontWeight:700,color:"#fff"}}>今日</button>
+        <button onClick={()=>nav(1)} style={{background:"#f1f5f9",border:"none",borderRadius:8,padding:"4px 8px",cursor:"pointer",fontSize:13,fontWeight:700,color:"#374151"}}>▶</button>
+        <span style={{fontSize:13,fontWeight:800,color:"#1a1a2e",marginLeft:2,whiteSpace:"nowrap"}}>{hTitle}</span>
+      </div>
+      <div style={{display:"flex",gap:3,alignItems:"center"}}>
+        <button onClick={()=>setShowResources(!showResources)} style={{padding:"4px 8px",borderRadius:6,border:showResources?"2px solid #475569":"1.5px solid #e2e8f0",background:showResources?"#47556910":"#fff",fontSize:10,fontWeight:700,cursor:"pointer",color:showResources?"#475569":"#94a3b8"}}>🏠設備</button>
+        {[["day","日"],["week","週"],["month","月"]].map(([k,l])=>
+          <button key={k} onClick={()=>setView(k)} style={{padding:"4px 12px",borderRadius:7,border:"none",cursor:"pointer",fontSize:11,fontWeight:700,background:view===k?"#0a0e27":"#f1f5f9",color:view===k?"#fff":"#64748b"}}>{l}</button>
+        )}
+      </div>
+    </div>
+
+    {/* 案3: WEATHER + 案2: HEATMAP */}
+    <div style={{background:"#fff",borderBottom:"1px solid #e5e7eb",padding:"4px 12px",display:"flex",gap:8,alignItems:"center",overflowX:"auto"}}>
+      <WeatherBar date={cur}/>
+      {view==="week"&&<StaffHeatmap events={events} weekDates={wd}/>}
+    </div>
+
+    {/* STAFF FILTER */}
+    <div style={{background:"#fff",borderBottom:"1px solid #e5e7eb",padding:"5px 10px",display:"flex",gap:4,overflowX:"auto"}}>
+      <Chip active={!selStaff} onClick={()=>setSelStaff(null)} color="#0a0e27" label="全員"/>
+      {STAFF.map(s=><Chip key={s.id} active={selStaff===s.id} onClick={()=>setSelStaff(selStaff===s.id?null:s.id)} color={s.color} label={s.name}/>)}
+    </div>
+
+    {/* CALENDAR BODY */}
+    <div style={{padding:"8px 6px 130px",maxWidth:1280,margin:"0 auto"}}>
+      {/* WEEK */}
+      {view==="week"&&<div style={CD}><div style={{overflowX:"auto"}}><div style={{minWidth:820}}>
+        <div style={{display:"grid",gridTemplateColumns:"100px repeat(7,1fr)",borderBottom:"2px solid #e5e7eb"}}>
+          <div style={{padding:6,background:"#f8fafc",borderRight:"1px solid #e5e7eb"}}><span style={{fontSize:10,color:"#94a3b8",fontWeight:700}}>スタッフ</span></div>
+          {wd.map((d,i)=><div key={i} onClick={()=>{setCur(d);setView("day")}} style={{padding:"4px 2px",textAlign:"center",cursor:"pointer",borderRight:"1px solid #f1f5f9",background:isToday(d)?"#eff6ff":"#f8fafc"}}>
+            <div style={{fontSize:10,fontWeight:600,color:d.getDay()===0?"#e11d48":d.getDay()===6?"#0066ff":"#64748b"}}>{WD[d.getDay()]}</div>
+            <div style={{fontSize:15,fontWeight:800,width:26,height:26,lineHeight:"26px",borderRadius:"50%",margin:"1px auto",background:isToday(d)?"#0066ff":"transparent",color:isToday(d)?"#fff":d.getDay()===0?"#e11d48":"#1a1a2e"}}>{d.getDate()}</div>
+          </div>)}
+        </div>
+        {vs.map(st=><div key={st.id} style={{display:"grid",gridTemplateColumns:"100px repeat(7,1fr)",borderBottom:"1px solid #f1f5f9",minHeight:66}}>
+          <div style={{padding:"6px 4px",borderRight:"1px solid #e5e7eb",display:"flex",alignItems:"center",gap:4,background:"#fafbfc"}}>
+            <div style={{width:28,height:28,borderRadius:"50%",background:st.color,flexShrink:0,color:"#fff",fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:`0 2px 6px ${st.color}40`}}>{st.avatar}</div>
+            <div style={{minWidth:0}}><div style={{fontSize:11,fontWeight:700,color:"#1a1a2e",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{st.name}</div><div style={{fontSize:9,color:"#94a3b8"}}>{st.role}</div></div>
+          </div>
+          {wd.map((d,di)=>{const de=eDS(d,st.id);return <div key={di}
+            onDrop={e=>handleDrop(d,st.id,e)} onDragOver={handleDragOver} onDragLeave={handleDragLeave}
+            onDoubleClick={()=>openNew(d,st.id)} style={{padding:"2px 1px",borderRight:"1px solid #f3f4f6",background:isWknd(d)?"#fafbfc":isToday(d)?"#fafcff":"#fff",minHeight:40}}>
+            {de.map(ev=><EvBlock key={ev.id} ev={ev} compact onClick={setSelEv}/>)}
+            {de.length===0&&!isWknd(d)&&<div onClick={()=>openNew(d,st.id)} style={{height:"100%",minHeight:28,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",borderRadius:4,color:"transparent",fontSize:10}}
+              onMouseEnter={e=>{e.currentTarget.style.background="#f0f4ff";e.currentTarget.style.color="#0066ff"}}
+              onMouseLeave={e=>{e.currentTarget.style.background="transparent";e.currentTarget.style.color="transparent"}}>＋</div>}
+          </div>;})}
+        </div>)}
+      </div></div></div>}
+
+      {/* DAY */}
+      {view==="day"&&<div style={CD}><div style={{overflowX:"auto"}}><div style={{minWidth:Math.max(400,vs.length*100+80)}}>
+        <div style={{display:"grid",gridTemplateColumns:`70px repeat(${vs.length},1fr)`,borderBottom:"2px solid #e5e7eb"}}>
+          <div style={{padding:6,background:"#f8fafc",borderRight:"1px solid #e5e7eb"}}><span style={{fontSize:10,color:"#94a3b8",fontWeight:700}}>時間</span></div>
+          {vs.map(s=><div key={s.id} style={{padding:"6px 4px",textAlign:"center",background:"#f8fafc",borderRight:"1px solid #f1f5f9"}}>
+            <div style={{width:24,height:24,borderRadius:"50%",background:s.color,color:"#fff",fontSize:10,fontWeight:800,display:"inline-flex",alignItems:"center",justifyContent:"center"}}>{s.avatar}</div>
+            <div style={{fontSize:10,fontWeight:700,marginTop:1}}>{s.name}</div>
+          </div>)}
+        </div>
+        {Array.from({length:11},(_,i)=>i+8).map(h=><div key={h} style={{display:"grid",gridTemplateColumns:`70px repeat(${vs.length},1fr)`,borderBottom:"1px solid #f1f5f9",minHeight:56}}>
+          <div style={{padding:"4px 6px",borderRight:"1px solid #e5e7eb",background:"#fafbfc",fontSize:11,fontWeight:700,color:"#64748b"}}>{String(h).padStart(2,"0")}:00</div>
+          {vs.map(s=>{const he=eDS(cur,s.id).filter(e=>e.start.getHours()===h);return <div key={s.id}
+            onDrop={e=>{e.preventDefault();e.currentTarget.classList.remove("drag-over");const evId=e.dataTransfer.getData("text/plain");if(!evId)return;
+              setEvents(prev=>prev.map(ev=>{if(ev.id!==evId)return ev;const dur=ev.end-ev.start;const ns=new Date(cur.getFullYear(),cur.getMonth(),cur.getDate(),h,0);return{...ev,staffId:s.id,start:ns,end:new Date(ns.getTime()+dur),synced:false}}));notify("📌 移動完了","info");doSync()}}
+            onDragOver={handleDragOver} onDragLeave={handleDragLeave}
+            onDoubleClick={()=>openNew(cur,s.id)} style={{padding:"2px 3px",borderRight:"1px solid #f3f4f6",background:h===12?"#fefce8":"#fff"}}>
+            {he.map(ev=><EvBlock key={ev.id} ev={ev} onClick={setSelEv}/>)}
+          </div>;})}
+        </div>)}
+      </div></div></div>}
+
+      {/* MONTH */}
+      {view==="month"&&<div style={CD}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",borderBottom:"1px solid #e5e7eb"}}>
+          {WD.slice(1).concat(WD[0]).map((d,i)=><div key={d} style={{padding:"6px 2px",textAlign:"center",fontSize:11,fontWeight:700,background:"#f8fafc",color:i===5?"#0066ff":i===6?"#e11d48":"#64748b"}}>{d}</div>)}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)"}}>
+          {md.map((d,i)=>{const de=eD(d);const cm=d.getMonth()===cur.getMonth();const w=WEATHER_DATA[fmt(d)];
+            return <div key={i} onClick={()=>{setCur(d);setView("day")}} style={{minHeight:72,padding:2,borderRight:"1px solid #f3f4f6",borderBottom:"1px solid #f3f4f6",background:isToday(d)?"#eff6ff":!cm?"#fafbfc":"#fff",cursor:"pointer",opacity:cm?1:.35}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 2px"}}>
+                <div style={{fontSize:11,fontWeight:isToday(d)?800:600,width:22,height:22,lineHeight:"22px",textAlign:"center",borderRadius:"50%",background:isToday(d)?"#0066ff":"transparent",color:isToday(d)?"#fff":d.getDay()===0?"#e11d48":"#374151"}}>{d.getDate()}</div>
+                {w&&cm&&<span style={{fontSize:10}}>{w.icon}</span>}
+              </div>
+              {de.slice(0,2).map(ev=>{const s=STAFF.find(x=>x.id===ev.staffId);return <div key={ev.id} style={{fontSize:8,padding:"1px 3px",borderRadius:3,marginBottom:1,background:s?.color||"#94a3b8",color:"#fff",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ev.title}</div>})}
+              {de.length>2&&<div style={{fontSize:8,color:"#64748b",fontWeight:700}}>+{de.length-2}</div>}
+            </div>;})}
+        </div>
+      </div>}
+    </div>
+
+    {/* FABs */}
+    <div style={{position:"fixed",bottom:20,right:14,display:"flex",flexDirection:"column",gap:8,zIndex:40}}>
+      <button onClick={()=>setShowChat(true)} title="AIチャット" style={{width:48,height:48,borderRadius:"50%",border:"none",background:"linear-gradient(135deg,#059669,#10b981)",color:"#fff",fontSize:18,cursor:"pointer",boxShadow:"0 4px 16px rgba(5,150,105,.4)",display:"flex",alignItems:"center",justifyContent:"center"}}>🐉</button>
+      <button onClick={()=>setShowVoice(true)} title="音声入力" style={{width:48,height:48,borderRadius:"50%",border:"none",background:"linear-gradient(135deg,#8b5cf6,#6d28d9)",color:"#fff",fontSize:18,cursor:"pointer",boxShadow:"0 4px 16px rgba(139,92,246,.4)",display:"flex",alignItems:"center",justifyContent:"center"}}>🎤</button>
+      <button onClick={()=>openNew()} title="新規予定" style={{width:48,height:48,borderRadius:"50%",border:"none",background:"linear-gradient(135deg,#0066ff,#2563eb)",color:"#fff",fontSize:22,cursor:"pointer",boxShadow:"0 4px 16px rgba(0,102,255,.4)",display:"flex",alignItems:"center",justifyContent:"center"}}>＋</button>
+    </div>
+
+    {/* MASCOTS */}
+    <div style={{position:"fixed",bottom:4,left:10,zIndex:30,pointerEvents:"none",display:"flex",alignItems:"flex-end",opacity:.8}}>
+      <div style={{animation:"bounceY 3s ease-in-out infinite"}}><Sheep s={34} level={Math.min(3,Math.floor((stats.alertChecked||0)/5))}/></div>
+      <div style={{animation:"bounceY 3s ease-in-out infinite .4s"}}><Dragon s={38} level={Math.min(3,Math.floor((stats.voiceUsed||0)/3))}/></div>
+      <div style={{animation:"bounceY 3s ease-in-out infinite .8s"}}><Camel s={34} level={Math.min(3,Math.floor((stats.chatUsed||0)/5))}/></div>
+    </div>
+
+    {/* MODALS */}
+    {showAlert&&<MorningAlert events={events} onClose={()=>setShowAlert(false)} stats={stats}/>}
+    <EventDetail event={selEv} onClose={()=>setSelEv(null)} onDelete={delEv} onEdit={openEdit} onOpenCustomer={id=>{setShowCustomer(id)}}/>
+    <EventForm isOpen={showForm} onClose={()=>{setShowForm(false);setEditEv(null)}} onSave={saveEv} editEvent={editEv} defaultDate={formDef.date} defaultStaff={formDef.staff}/>
+    <VoiceInput isOpen={showVoice} onClose={()=>setShowVoice(false)} onCreated={addEv} onUpdateStats={updateStats}/>
+    <AIChat isOpen={showChat} onClose={()=>setShowChat(false)} events={events} onAddEvent={addEv} onUpdateStats={updateStats}/>
+    <Dashboard isOpen={showDash} onClose={()=>setShowDash(false)} events={events} stats={stats}/>
+    <MascotStatus isOpen={showMascot} onClose={()=>setShowMascot(false)} stats={stats}/>
+    <AIOptimization isOpen={showOptimize} onClose={()=>setShowOptimize(false)} events={events}/>
+    {showCustomer&&<CustomerCard isOpen={!!showCustomer} onClose={()=>setShowCustomer(null)} events={events} customerId={showCustomer}/>}
+
+    {/* TOAST */}
+    {toast&&<div style={{position:"fixed",bottom:90,left:"50%",transform:"translateX(-50%)",background:toast.t==="warning"?"#d97706":toast.t==="info"?"#0066ff":"#059669",color:"#fff",padding:"8px 20px",borderRadius:50,fontSize:12,fontWeight:600,zIndex:9999,boxShadow:"0 8px 30px rgba(0,0,0,.25)",animation:"toastSlide .3s ease",whiteSpace:"nowrap"}}>{toast.m}</div>}
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
